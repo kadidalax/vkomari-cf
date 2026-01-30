@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.npm/
+
+# Build artifacts
+dist/
+build/
+.wrangler/
+
+# Environment files
+.env
+.env.*
+.dev.vars
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local Database & Data
+# Ignore the local SQLite database used by server.js
+data/
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-journal
+
+# Project specific
+.wrangler/
+.agent/
+temp/
+tmp/
