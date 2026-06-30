@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vKomari-CF — 虚拟探针管理器</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="js/data.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+  <script src="js/api.js"></script>
+  <style>[x-cloak]{display:none!important}
+:root{--bg:#09090b;--card:rgba(23,23,26,0.65);--border:rgba(63,63,70,0.25);--accent:#7c3aed;--accent2:#a78bfa;--glow:rgba(124,58,237,0.25)}
+body{background:var(--bg);background-image:radial-gradient(at 0% 0%,rgba(124,58,237,0.07) 0px,transparent 50%),radial-gradient(at 100% 0%,rgba(168,85,247,0.04) 0px,transparent 50%),radial-gradient(at 50% 100%,rgba(59,130,246,0.03) 0px,transparent 50%);background-attachment:fixed;font-family:'Inter',system-ui,-apple-system,sans-serif;color:#e4e4e7}
+.glass{background:var(--card);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--border);box-shadow:0 4px 30px rgba(0,0,0,0.1)}
+.nc{background:rgba(24,24,27,0.55);border:1px solid rgba(63,63,70,0.25);transition:all .35s cubic-bezier(0.4,0,0.2,1)}
+.nc:hover{transform:translateY(-4px);border-color:rgba(124,58,237,0.35);background:rgba(30,30,35,0.75);box-shadow:0 20px 25px -5px rgba(0,0,0,0.3)}
+.stat-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(63,63,70,0.15)}.stat-row:last-child{border-bottom:none}
+.stat-l{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#71717a;font-weight:600}
+.stat-v{font-size:12px;font-weight:500;font-family:'JetBrains Mono',monospace}
+.toggle-bg:after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:white;border-radius:50%;transition:.3s cubic-bezier(0.4,0,0.2,1);box-shadow:0 2px 4px rgba(0,0,0,.2)}
+input:checked+.toggle-bg:after{transform:translateX(.75rem)}
+input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 100%)}
+.cs::-webkit-scrollbar{width:5px}.cs::-webkit-scrollbar-track{background:transparent}.cs::-webkit-scrollbar-thumb{background:rgba(63,63,70,.4);border-radius:10px}.cs::-webkit-scrollbar-thumb:hover{background:rgba(124,58,237,.4)}
+.toast-c{position:fixed;bottom:2rem;right:2rem;z-index:999;display:flex;flex-direction:column;gap:.75rem;pointer-events:none}
+.toast{pointer-events:auto;min-width:280px;max-width:400px;background:rgba(24,24,27,.9);backdrop-filter:blur(12px);border:1px solid rgba(63,63,70,.4);border-radius:12px;padding:1rem;display:flex;align-items:center;gap:.75rem;box-shadow:0 10px 15px -3px rgba(0,0,0,.3);animation:ti .3s cubic-bezier(0.16,1,0.3,1)}@keyframes ti{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.toast-ok{border-left:4px solid #22c55e}.toast-err{border-left:4px solid #ef4444}.toast-warn{border-left:4px solid #f59e0b}
+  </style>
+</head>
+<body class="min-h-screen" x-data="app()" x-cloak>
+
+<!-- Login -->
+<div x-show="!token" class="min-h-screen flex items-center justify-center p-4">
+  <div class="w-full max-w-sm">
+    <h1 class="text-4xl font-bold text-violet-400 text-center mb-2">🔮 vKomari-CF</h1>
+    <p class="text-zinc-500 text-center mb-6 text-sm">Komari + CF-VPS-Monitor 双面板虚拟探针</p>
+    <div class="glass rounded-xl p-6 shadow-xl">
+      <form @submit.prevent="login" class="space-y-4">
+        <input type="text" x-model="loginForm.username" autocomplete="username" placeholder="用户名" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500 transition">
+        <input type="password" x-model="loginForm.password" autocomplete="current-password" placeholder="密码" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500 transition">
+        <div x-show="loginError" class="text-red-400 text-sm text-center bg-red-900/20 py-2 rounded" x-text="loginError"></div>
+        <button type="submit" class="w-full bg-violet-600 hover:bg-violet-500 text-white py-3 rounded-lg font-semibold transition shadow-lg shadow-violet-900/20">登 录</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Main -->
+<div x-show="token" class="min-h-screen">
+  <header class="bg-zinc-800/90 backdrop-blur border-b border-zinc-700 sticky top-0 z-30 px-4 py-3">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-violet-500/20 rounded-lg flex items-center justify-center text-violet-400 font-bold">V</div>
+        <h1 class="text-xl font-bold">vKomari-CF</h1>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button @click="batchAction('start')" class="px-3 py-1.5 text-xs bg-violet-600/20 text-violet-400 hover:bg-violet-600/30 rounded border border-violet-600/20 transition">▶ 全部启动</button>
+        <button @click="batchAction('stop')" class="px-3 py-1.5 text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded border border-red-600/20 transition">⏸ 全部停止</button>
+        <div class="w-px h-6 bg-zinc-700 mx-1"></div>
+        <button @click="exportNodes" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">导出</button>
+        <button @click="$refs.importFile.click()" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">导入</button>
+        <input type="file" x-ref="importFile" @change="importNodesFromFile" class="hidden" accept=".json">
+        <div class="w-px h-6 bg-zinc-700 mx-1"></div>
+        <button @click="showPwdModal=true" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">改密</button>
+        <button @click="logout" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">退出</button>
+        <button @click="openModal()" class="px-4 py-1.5 text-xs bg-violet-600 hover:bg-violet-500 text-white rounded font-medium shadow-lg shadow-violet-900/20 transition flex items-center gap-1"><span class="text-lg leading-none">+</span> 添加节点</button>
+        <a href="https://github.com/kadidalax/vkomari-cf" target="_blank" class="ml-2 p-1.5 text-zinc-400 hover:text-white transition bg-zinc-700/50 hover:bg-zinc-700 rounded-lg" title="GitHub">
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .32.21.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto p-4 sm:p-6">
+    <!-- Search & Filter -->
+    <div class="flex flex-wrap gap-4 mb-6">
+      <div class="flex-1 min-w-[200px]">
+        <input type="text" x-model="searchQuery" placeholder="搜索节点名称、地址、分组..." autocomplete="off"
+          class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500 transition">
+      </div>
+      <select x-model="activeGroup" class="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500">
+        <option value="">所有分组</option>
+        <template x-for="g in groups" :key="g"><option :value="g" x-text="g||'未分组'"></option></template>
+      </select>
+    </div>
+
+    <!-- Group Sections -->
+    <template x-for="group in displayedGroups" :key="group">
+      <div class="mb-8">
+        <div class="flex items-center gap-3 mb-3 cursor-pointer" @click="toggleCollapse(group)">
+          <span class="text-zinc-500 transition-transform" :class="collapsedGroups[group] ? '-rotate-90' : ''">▼</span>
+          <h2 class="text-sm font-bold uppercase tracking-wider text-zinc-400" x-text="group||'未分组'"></h2>
+          <span class="text-xs text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded-full" x-text="nodesInGroup(group).length"></span>
+          <button x-show="group!==''" @click.stop="showRename(group)" class="text-zinc-600 hover:text-violet-400 text-xs ml-2">✏️</button>
+        </div>
+        <div x-show="!collapsedGroups[group]" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3" :data-group="group">
+          <template x-for="n in nodesInGroup(group)" :key="n.id">
+            <div class="glass rounded-xl overflow-hidden nc flex flex-col" :data-id="n.id">
+              <!-- Card Header -->
+              <div class="px-3 py-2.5 flex justify-between items-start border-b border-white/5 bg-white/[0.02]">
+                <div class="flex gap-2 min-w-0 flex-1">
+                  <div class="relative mt-1 flex-shrink-0">
+                    <div class="w-2 h-2 rounded-full" :class="n.enabled ? 'bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.8)]' : 'bg-zinc-600'"></div>
+                    <div x-show="n.enabled" class="absolute inset-0 w-2 h-2 rounded-full bg-violet-400 animate-ping opacity-60"></div>
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                      <span class="font-semibold text-zinc-100 text-sm truncate" x-text="n.name"></span>
+                      <span class="text-sm" x-text="getFlag(n.region)"></span>
+                    </div>
+                    <div class="text-[10px] text-zinc-500 font-mono truncate" x-text="n.server_address||'-'"></div>
+                  </div>
+                </div>
+                <div class="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="sr-only peer" :checked="n.enabled" @change="toggleNode(n.id,$event.target.checked)">
+                    <div class="toggle-bg w-8 h-5 bg-zinc-800 border border-white/10 rounded-full"></div>
+                  </label>
+                  <span class="text-[8px] font-bold px-1.5 py-0.5 rounded border"
+                    :class="{'bg-violet-500/10 text-violet-400 border-violet-500/20':n.load_profile==='low','bg-amber-500/10 text-amber-400 border-amber-500/20':n.load_profile==='mid','bg-red-500/10 text-red-400 border-red-500/20':n.load_profile==='high'}"
+                    x-text="n.load_profile||'mid'"></span>
+                </div>
+              </div>
+              <!-- Card Stats -->
+              <div class="px-3 py-2 flex-1 space-y-0.5">
+                <div class="stat-row"><span class="stat-l">配置</span><span class="text-xs font-mono text-violet-400" x-text="(n.cpu_cores||2)+'C / '+(n.ram_total||1024)+'MB'"></span></div>
+                <div class="stat-row"><span class="stat-l">系统</span><span class="text-[11px] text-zinc-300 truncate max-w-[120px]" x-text="n.os||'Linux'"></span></div>
+                <div class="stat-row" x-show="n.group_name"><span class="stat-l">分组</span><span class="text-[10px] text-zinc-400 px-1.5 py-0.5 bg-zinc-800/80 rounded border border-zinc-700/50" x-text="n.group_name"></span></div>
+                <div class="stat-row"><span class="stat-l">面板</span>
+                  <span class="text-[10px] flex gap-1">
+                    <span x-show="n.komari_server" class="text-violet-400 bg-violet-500/10 px-1.5 py-0.5 rounded">Komari</span>
+                    <span x-show="n.cfmonitor_server" class="text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">CF</span>
+                    <span x-show="n.report_enabled" class="text-green-400 text-[9px]">📡</span>
+                  </span>
+                </div>
+                <div class="stat-row"><span class="stat-l">硬盘</span><span class="text-[11px] font-mono text-zinc-400" x-text="(n.disk_total||10)+'GB'"></span></div>
+              </div>
+              <!-- Card Footer -->
+              <div class="px-3 py-2 bg-zinc-900/40 border-t border-white/5 flex gap-2">
+                <button @click="editNode(n)" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-1.5 rounded-lg text-[11px] font-medium transition border border-zinc-700/50">配置</button>
+                <button @click="deleteNode(n.id)" class="flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-500/80 py-1.5 rounded-lg text-[11px] font-medium transition border border-red-500/10">删除</button>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </template>
+
+    <!-- Empty State -->
+    <div x-show="nodes.length===0" class="text-center py-20 text-zinc-500 bg-zinc-800/30 rounded-xl border border-zinc-700/50 border-dashed">
+      <p class="text-lg">暂无节点</p>
+      <p class="text-sm mt-2">点击右上角添加按钮创建一个新的虚拟节点</p>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-12 pb-8 text-center space-y-4">
+      <a href="https://github.com/kadidalax/vkomari-cf" target="_blank" class="text-zinc-500 hover:text-violet-400 transition inline-flex items-center gap-2 text-sm font-medium group">
+        <div class="bg-zinc-800 p-2 rounded-full group-hover:bg-zinc-700 transition"><svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .32.21.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></div>
+        <span>GitHub</span>
+      </a>
+      <div class="text-zinc-600 text-[10px] uppercase tracking-[0.2em] font-bold">&copy; 2026 vKomari-CF</div>
+    </footer>
+  </main>
+</div>
+<!-- Edit Modal -->
+<div x-show="showModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" style="display:none" x-transition.opacity>
+  <div class="glass rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
+    <!-- Modal Header -->
+    <div class="p-5 border-b border-white/5 flex justify-between items-center bg-zinc-900/50 backdrop-blur-xl z-20">
+      <div class="flex items-center gap-4">
+        <div class="w-10 h-10 bg-violet-500/10 rounded-xl flex items-center justify-center text-violet-500">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+        </div>
+        <div>
+          <h2 class="text-xl font-bold text-white" x-text="form.id ? '编辑节点配置' : '新建虚拟节点'"></h2>
+          <p class="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">Node Configuration</p>
+        </div>
+        <!-- Template Picker -->
+        <div class="relative ml-4" x-data="{open:false}">
+          <button @click="open=!open" class="text-xs bg-zinc-800 hover:bg-zinc-700 border border-white/5 px-4 py-1.5 rounded-lg text-zinc-300 transition flex items-center gap-2">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-.293.707L13 11.414V17a1 1 0 01-.447.894l-2 1A1 1 0 019 18v-6.586l-6.707-6.707A1 1 0 013 7V5z"/></svg>
+            模板库<span class="text-[10px] opacity-40" x-text="open?'▲':'▼'"></span>
+          </button>
+          <div x-show="open" @click.away="open=false" class="absolute left-0 mt-3 w-72 bg-zinc-900 glass rounded-2xl shadow-2xl z-50 overflow-hidden">
+            <div class="p-3 border-b border-white/5 bg-white/5">
+              <div class="flex gap-2"><input type="text" x-model="newTemplateName" placeholder="保存当前为模板..." class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:border-violet-500 focus:outline-none"><button @click="saveAsTemplate();open=false" class="bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">保存</button></div>
+            </div>
+            <div class="max-h-60 overflow-y-auto p-2 space-y-1 cs">
+              <template x-for="t in templates" :key="t.id">
+                <div class="flex items-center group p-2.5 hover:bg-white/5 rounded-xl cursor-pointer transition">
+                  <div @click="applyTemplate(t);open=false" class="flex-1 min-w-0"><div class="text-sm font-medium text-zinc-200 truncate" x-text="t.name"></div><div class="text-[10px] text-zinc-500" x-text="(t.config.cpu_cores||2)+'C '+(t.config.ram_total||1024)+'MB'"></div></div>
+                  <button @click.stop="deleteTemplate(t.id)" class="text-zinc-600 hover:text-red-400 p-1.5 opacity-0 group-hover:opacity-100 transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
+                </div>
+              </template>
+              <div x-show="templates.length===0" class="text-center text-zinc-500 text-xs py-4">暂无模板</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button @click="showModal=false" class="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-700 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+    </div>
+    <!-- Modal Body -->
+    <div class="p-6 overflow-y-auto flex-1 cs space-y-5">
+      <!-- Section: Basic -->
+      <div>
+        <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>基础信息</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-[10px] text-zinc-500 uppercase">名称</label><input x-model="form.name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">地区</label>
+            <div class="relative mt-1" x-data="{open:false}">
+              <div @click="open=!open" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center gap-2"><span x-text="getFlag(form.region)"></span><span x-text="form.region||'CN'"></span></div>
+              <div x-show="open" @click.away="open=false" class="absolute z-30 w-full mt-1 bg-zinc-900 glass rounded-lg max-h-48 overflow-y-auto cs">
+                <input type="text" x-model="countrySearch" placeholder="搜索..." class="w-full bg-zinc-800 border-b border-zinc-700 px-3 py-2 text-xs focus:outline-none sticky top-0">
+                <template x-for="c in dd.countries.filter(x=>countrySearch?x.name.toLowerCase().includes(countrySearch.toLowerCase())||x.code.toLowerCase().includes(countrySearch.toLowerCase()):true)"><div @click="form.region=c.code;open=false" class="px-3 py-1.5 text-xs hover:bg-white/5 cursor-pointer flex items-center gap-2"><span x-text="c.flag"></span><span x-text="c.name+' ('+c.code+')'"></span></div></template>
+              </div>
+            </div>
+          </div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">OS</label><select x-model="form.os" @change="onOsChange()" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="o in dd.os"><option :value="o.value" x-text="o.label"></option></template></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">架构</label><select x-model="form.arch" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="amd64">amd64</option><option value="arm64">arm64</option><option value="i386">i386</option></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">虚拟化</label><select x-model="form.virtualization" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="kvm">KVM</option><option value="openvz">OpenVZ</option><option value="lxc">LXC</option><option value="docker">Docker</option><option value="vmware">VMware</option><option value="hyperv">Hyper-V</option><option value="xen">Xen</option><option value="bhyve">Bhyve</option></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">内核版本</label><select x-model="form.kernel_version" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="k in getKernels(form.os)"><option :value="k" x-text="k"></option></template></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">伪造IP</label><input x-model="form.fake_ip" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="203.0.113.5"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">CPU型号</label><input x-model="form.cpu_model" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+        </div>
+      </div>
+      <!-- Section: Hardware -->
+      <div>
+        <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>硬件配置</h3>
+        <div class="grid grid-cols-3 gap-3">
+          <div><label class="text-[10px] text-zinc-500 uppercase">CPU核心</label><input type="number" x-model="form.cpu_cores" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">内存(MB)</label><input type="number" x-model="form.ram_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">Swap(MB)</label><input type="number" x-model="form.swap_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">硬盘(GB)</label><input type="number" x-model="form.disk_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">负载模式</label><select x-model="form.load_profile" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="low">低负载</option><option value="mid">中等</option><option value="high">高负载</option></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">GPU型号</label><input x-model="form.gpu_name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="NVIDIA A100"></div>
+        </div>
+      </div>
+      <!-- Section: Simulation Range -->
+      <div>
+        <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>模拟波动范围</h3>
+        <div class="grid grid-cols-3 gap-3">
+          <div><label class="text-[10px] text-zinc-500 uppercase">CPU最低%</label><input type="number" x-model="form.cpu_min" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">CPU最高%</label><input type="number" x-model="form.cpu_max" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">网速最低 B/s</label><input type="number" x-model="form.net_min" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">网速最高 B/s</label><input type="number" x-model="form.net_max" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">内存最低%</label><input type="number" x-model="form.mem_min" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">内存最高%</label><input type="number" x-model="form.mem_max" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+        </div>
+      </div>
+      <!-- Section: One-Key Parse -->
+      <div>
+        <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>一键解析安装脚本</h3>
+        <textarea x-model="installScript" placeholder="粘贴 Komari 或 CF-VPS-Monitor 的安装命令..." class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono focus:border-violet-500 focus:outline-none h-16"></textarea>
+        <div class="flex gap-2 mt-2"><button @click="parseScript()" class="bg-zinc-700 hover:bg-zinc-600 text-xs px-3 py-1 rounded transition">🔍 解析</button><span class="text-xs text-zinc-500 mt-1" x-text="parseResult"></span></div>
+      </div>
+      <!-- Section: Panel Targets -->
+      <div>
+        <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>面板目标</h3>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="col-span-2"><label class="text-[10px] text-violet-300 uppercase font-bold">🎯 Komari 面板</label></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">服务器地址</label><input x-model="form.komari_server" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="https://komari.example.com"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">Token</label><input x-model="form.komari_token" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div class="col-span-2 mt-2"><label class="text-[10px] text-emerald-300 uppercase font-bold">🎯 CF-VPS-Monitor 面板</label></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">Worker 地址</label><input x-model="form.cfmonitor_server" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="https://cf-vps-monitor.example.workers.dev"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">Token</label><input x-model="form.cfmonitor_token" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+        </div>
+      </div>
+      <!-- Section: Status -->
+      <div class="flex items-center gap-6 pt-2 border-t border-white/5">
+        <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" x-model="form.enabled" checked> 节点启用</label>
+        <label class="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" x-model="form.report_enabled"> 数据上报</label>
+        <div class="flex-1"></div>
+        <div class="text-[10px] text-zinc-500" x-show="form.group_name" x-text="'分组: '+form.group_name"></div>
+      </div>
+    </div>
+    <!-- Modal Footer -->
+    <div class="p-4 border-t border-white/5 bg-zinc-900/30 flex justify-between">
+      <button @click="deleteNode(form.id)" x-show="form.id" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm transition">删除节点</button>
+      <button @click="showModal=false" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-sm transition ml-auto">取消</button>
+      <button @click="saveNode()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-violet-900/20 ml-2">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Password Modal -->
+<div x-show="showPwdModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity>
+  <div class="glass rounded-2xl p-6 w-full max-w-sm">
+    <h3 class="text-lg font-bold mb-4">修改密码</h3>
+    <input type="password" x-model="newPassword" placeholder="新密码（至少6位）" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:border-violet-500 focus:outline-none mb-3">
+    <div class="flex gap-2 justify-end">
+      <button @click="showPwdModal=false" class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm transition">取消</button>
+      <button @click="changePassword()" class="bg-violet-600 hover:bg-violet-500 text-white px-4 py-2 rounded-lg text-sm transition">确认</button>
+    </div>
+    <div x-show="isDefaultPwd" class="mt-3 text-amber-400 text-xs">⚠ 您正在使用默认密码，请立即修改！</div>
+  </div>
+</div>
+
+<!-- Confirm Dialog -->
+<div x-show="confirmDialog.show" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-[60]" x-transition.opacity>
+  <div class="glass rounded-2xl p-6 w-full max-w-sm text-center">
+    <div class="text-3xl mb-3" x-text="confirmDialog.type==='danger'?'⚠':confirmDialog.type==='success'?'✅':'ℹ'"></div>
+    <h3 class="text-lg font-bold mb-1" x-text="confirmDialog.title"></h3>
+    <p class="text-zinc-400 text-sm mb-4" x-text="confirmDialog.message"></p>
+    <div class="flex gap-2 justify-center">
+      <button x-show="confirmDialog.isConfirm" @click="confirmDialog.onCancel()" class="bg-zinc-700 hover:bg-zinc-600 px-6 py-2 rounded-lg text-sm transition">取消</button>
+      <button @click="confirmDialog.onConfirm()" :class="confirmDialog.type==='danger'?'bg-red-600 hover:bg-red-500':'bg-violet-600 hover:bg-violet-500'" class="text-white px-6 py-2 rounded-lg text-sm transition shadow-lg" x-text="confirmDialog.confirmText"></button>
+    </div>
+  </div>
+</div>
+<!-- Toast Container -->
+<div class="toast-c"><template x-for="t in toasts" :key="t.id"><div :class="'toast toast-'+t.type"><span x-text="t.type==='success'?'✅':t.type==='error'?'❌':'ℹ'"></span><span class="text-sm" x-text="t.message"></span></div></template></div>
+
+<!-- Alpine.js App Logic -->
+<script>
+function app(){return{
+  token:localStorage.getItem('vkomari_token')||'',
+  loginForm:{username:'admin',password:''},loginError:'',
+  nodes:[],showModal:false,showPwdModal:false,isDefaultPwd:false,newPassword:'',
+  form:{},countrySearch:'',installScript:'',parseResult:'',
+  toasts:[],searchQuery:'',activeGroup:'',newTemplateName:'',
+  collapsedGroups:{},templates:[],
+  confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
+  showRenameModal:false,renameForm:{oldName:'',newName:''},
+  dd:DROPDOWN_DATA,
+
+  notify(msg,type){const id=Date.now();this.toasts.push({id,message:msg,type});setTimeout(()=>{this.toasts=this.toasts.filter(t=>t.id!==id)},3000)},
+
+  showConfirm(title,msg,type,confirmText){
+    return new Promise(resolve=>{this.confirmDialog={show:true,title,message:msg,type:type||'info',isConfirm:true,confirmText:confirmText||'确定',onConfirm:()=>{this.confirmDialog.show=false;resolve(true)},onCancel:()=>{this.confirmDialog.show=false;resolve(false)}}})},
+
+  showAlert(title,msg,type){
+    return new Promise(resolve=>{this.confirmDialog={show:true,title,message:msg,type:type||'info',isConfirm:false,confirmText:'知道了',onConfirm:()=>{this.confirmDialog.show=false;resolve()}}})},
+
+  get groups(){const g=new Set(this.nodes.map(n=>n.group_name||''));return Array.from(g).sort()},
+  get filteredNodes(){let f=this.nodes;if(this.activeGroup) f=f.filter(n=>(n.group_name||'')===this.activeGroup);if(this.searchQuery){const s=this.searchQuery.toLowerCase();f=f.filter(n=>n.name.toLowerCase().includes(s)||(n.server_address||'').toLowerCase().includes(s)||(n.group_name||'').toLowerCase().includes(s))}return f},
+  get displayedGroups(){const v=new Set(this.filteredNodes.map(n=>n.group_name||''));return this.groups.filter(g=>v.has(g))},
+  nodesInGroup(g){return this.filteredNodes.filter(n=>(n.group_name||'')===g)},
+  getFlag(c){if(!c)return'🏳';const r=this.dd.countries.find(x=>x.code===c.toUpperCase());return r?r.flag:'🏳'},
+  getKernels(os){return this.dd.kernelMap[os]||this.dd.kernelMap['Ubuntu 24.04 LTS']||['5.15.0-generic']},
+  onOsChange(){const k=this.getKernels(this.form.os);if(k.length&&!k.includes(this.form.kernel_version)) this.form.kernel_version=k[0]},
+
+  toggleCollapse(g){this.collapsedGroups[g]=!this.collapsedGroups[g]},
+
+  init(){
+    if(this.token){this.validateToken()}
+    this.collapsedGroups={}
+  },
+
+  async validateToken(){
+    try{await API.me();this.loadNodes();this.loadTemplates();setInterval(()=>{this.loadNodes();this.loadTemplates()},30000)}catch(e){API.clearToken();this.token='';this.nodes=[]}
+  },
+
+  async login(){
+    try{const r=await API.login(this.loginForm.username,this.loginForm.password);API.setToken(r.token);this.token=r.token;if(r.isDefault) this.isDefaultPwd=true;this.loginError='';this.loadNodes();this.loadTemplates()}catch(e){this.loginError=e.message||'登录失败'}
+  },
+
+  logout(){API.clearToken();this.token='';this.nodes=[];location.reload()},
+
+  async loadNodes(){try{this.nodes=await API.getNodes();this.initDragDrop()}catch(e){}},
+  async loadTemplates(){try{this.templates=await API.getTemplates()}catch(e){}},
+
+  async toggleNode(id,enabled){try{await API.toggleNode(id,enabled);await this.loadNodes()}catch(e){this.notify('操作失败: '+e.message,'error')}},
+  async batchAction(a){try{await API.batchNodes(a);await this.loadNodes();this.notify(a==='start'?'已全部启动':'已全部停止','success')}catch(e){this.notify('操作失败: '+e.message,'error')}},
+  async deleteNode(id){const ok=await this.showConfirm('删除节点','确定删除此节点？','danger','删除');if(!ok)return;try{await API.deleteNode(id);await this.loadNodes();this.notify('节点已删除','success')}catch(e){this.notify('删除失败: '+e.message,'error')}},
+
+  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel Xeon',cpu_cores:2,ram_total:1024,swap_total:0,disk_total:10,load_profile:'mid',cpu_min:5,cpu_max:85,mem_min:15,mem_max:85,swap_min:0,swap_max:5,disk_min:30,disk_max:80,net_min:102400,net_max:10485760,conn_min:10,conn_max:200,proc_min:50,proc_max:300,fake_ip:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.parseResult='';this.installScript='';this.showModal=true},
+
+  editNode(n){this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.showModal=true},
+
+  async saveNode(){
+    const f=this.form;
+    const data={...f,
+      name:f.name||'VPS-'+Math.floor(Math.random()*1000),
+      report_enabled:f.report_enabled?1:0,enabled:f.enabled?1:0,
+      report_interval:3,traffic_reset_day:1,
+      boot_time:f.boot_time||0,uptime_base:f.uptime_base||86400,
+      client_uuid:f.client_uuid||crypto.randomUUID(),
+      sort_order:f.sort_order||0,group_name:f.group_name||''
+    };
+    if(!data.name) data.name='VPS-'+Math.floor(Math.random()*1000);
+    try{await API.saveNode(data);this.showModal=false;await this.loadNodes();this.notify('节点已保存','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
+  },
+
+  async changePassword(){
+    if(!this.newPassword||this.newPassword.length<6) return this.notify('密码至少6位','error');
+    try{await API.changePassword(this.newPassword);this.showPwdModal=false;this.isDefaultPwd=false;this.notify('密码已修改','success')}catch(e){this.notify(e.message,'error')}
+  },
+
+  async saveAsTemplate(){
+    const f=this.form;const name=this.newTemplateName||prompt('模板名称:');if(!name)return;
+    const cfg={os:f.os,arch:f.arch,virtualization:f.virtualization,region:f.region,cpu_model:f.cpu_model,cpu_cores:f.cpu_cores,ram_total:f.ram_total,swap_total:f.swap_total,disk_total:f.disk_total,load_profile:f.load_profile,cpu_min:f.cpu_min,cpu_max:f.cpu_max,mem_min:f.mem_min,mem_max:f.mem_max,net_min:f.net_min,net_max:f.net_max,report_enabled:f.report_enabled?1:0};
+    try{await API.saveTemplate(name,cfg);this.newTemplateName='';await this.loadTemplates();this.notify('模板已保存','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
+  },
+
+  applyTemplate(t){
+    const c=t.config;
+    this.form={...this.form,os:c.os||this.form.os,arch:c.arch||this.form.arch,virtualization:c.virtualization||this.form.virtualization,region:c.region||this.form.region,cpu_model:c.cpu_model||this.form.cpu_model,cpu_cores:c.cpu_cores||this.form.cpu_cores,ram_total:c.ram_total||this.form.ram_total,swap_total:c.swap_total||this.form.swap_total,disk_total:c.disk_total||this.form.disk_total,load_profile:c.load_profile||this.form.load_profile,cpu_min:c.cpu_min||this.form.cpu_min,cpu_max:c.cpu_max||this.form.cpu_max,mem_min:c.mem_min||this.form.mem_min,mem_max:c.mem_max||this.form.mem_max,net_min:c.net_min||this.form.net_min,net_max:c.net_max||this.form.net_max,report_enabled:!!c.report_enabled};
+    this.form.kernel_version=this.getKernels(this.form.os)[0]||'';
+    this.notify('已应用模板: '+t.name,'success')
+  },
+
+  async deleteTemplate(id){const ok=await this.showConfirm('删除模板','确定删除此模板？','danger','删除');if(!ok)return;try{await API.deleteTemplate(id);await this.loadTemplates()}catch(e){this.notify('删除失败','error')}},
+
+  parseScript(){
+    const s=this.installScript.trim();if(!s){this.parseResult='请粘贴安装脚本';return}
+    let server='',token='',name='',uuid='',pt='';
+    const km=s.match(/-e\s+['"]?(\S+?)['"]?(?:\s|$)/);if(km){server=km[1];pt='komari'}
+    const cms=s.match(/-s\s+['"]?(\S+?)['"]?(?:\s|$)/);if(cms){server=cms[1];pt='cfmonitor'}
+    const tm=s.match(/-t\s+['"]?(\S+?)['"]?(?:\s|$)/);if(tm)token=tm[1]
+    const nm=s.match(/-n\s+['"]?(\S+?)['"]?(?:\s|$)/);if(nm)name=nm[1]
+    const um=s.match(/-i\s+['"]?(\S+?)['"]?(?:\s|$)/);if(um)uuid=um[1]
+    if(!pt){if(server.includes('komari'))pt='komari';else if(server.includes('cf')||server.includes('monitor'))pt='cfmonitor'}
+    if(!server||!token){this.parseResult='❌ 无法解析，请检查脚本格式';return}
+    if(pt==='komari'){this.form.komari_server=server;this.form.komari_token=token;this.parseResult='✅ 已填入 Komari 面板'}else{this.form.cfmonitor_server=server;this.form.cfmonitor_token=token;this.parseResult='✅ 已填入 CF-VPS-Monitor 面板'}
+    if(name)this.form.name=name
+  },
+
+  showRename(g){this.renameForm={oldName:g,newName:g};this.showRenameModal=true},
+  async doRename(){const{oldName,newName}=this.renameForm;if(!newName||oldName===newName){this.showRenameModal=false;return}try{await API.renameGroup(oldName,newName);this.showRenameModal=false;await this.loadNodes();this.notify('分组已重命名','success')}catch(e){this.notify('重命名失败: '+e.message,'error')}},
+
+  exportNodes(){
+    const clean=this.nodes.map(n=>{const{id,online,sendCount,uptime,lastError,created_at,...r}=n;return r});
+    const blob=new Blob([JSON.stringify(clean,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='vkomari-export.json';a.click();
+    this.notify('已导出 '+clean.length+' 个节点','success')
+  },
+
+  async importNodesFromFile(e){
+    const file=e.target.files[0];if(!file)return;
+    try{const text=await file.text();const nodes=JSON.parse(text);if(!Array.isArray(nodes))throw new Error('格式错误');
+    const ok=await this.showConfirm('导入节点','确定导入 '+nodes.length+' 个节点？','info','导入');if(!ok)return;
+    await API.importNodes(nodes);await this.loadNodes();this.notify('成功导入 '+nodes.length+' 个节点','success');
+    e.target.value=''}catch(e){this.notify('导入失败: '+e.message,'error');e.target.value=''}
+  },
+
+  initDragDrop(){
+    this.$nextTick(()=>{
+      document.querySelectorAll('.grid[data-group]').forEach(grid=>{
+        new Sortable(grid,{group:'nodes',animation:200,ghostClass:'opacity-30',onEnd:async(evt)=>{
+          const cards=[...grid.querySelectorAll('[data-id]')];
+          const updates=cards.map((c,i)=>({id:parseInt(c.dataset.id),sort_order:i,group_name:grid.dataset.group}));
+          try{await API.reorderNodes(updates);await this.loadNodes()}catch(e){this.notify('排序失败','error')}
+        }})
+      })
+    })
+  }
+}}
+</script>
+
+</body>
+</html>

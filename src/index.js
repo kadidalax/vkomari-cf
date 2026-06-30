@@ -1,0 +1,99 @@
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import authRoutes from './routes/auth.js';
+import nodeRoutes from './routes/nodes.js';
+import { authMiddleware } from './auth.js';
+import { getDB, getTemplates } from './db.js';
+import { KomariReporter } from './reporters/komari.js';
+import { CFMonitorReporter } from './reporters/cfmonitor.js';
+
+const app = new Hono();
+app.use('/api/*', cors());
+
+// Auth routes
+app.route('/api', authRoutes);
+
+// Node CRUD
+app.route('/api/nodes', nodeRoutes);
+
+// Groups
+app.post('/api/groups/rename', authMiddleware, async (c) => {
+  const { oldName, newName } = await c.req.json();
+  if (!oldName || !newName || oldName === newName) return c.json({ status: 'no_change' });
+  await getDB(c).prepare('UPDATE nodes SET group_name = ? WHERE group_name = ?').bind(newName, oldName).run();
+  return c.json({ status: 'ok' });
+});
+
+// Templates
+app.get('/api/templates', authMiddleware, async (c) => c.json(await getTemplates(getDB(c))));
+
+app.post('/api/templates', authMiddleware, async (c) => {
+  const { name, config } = await c.req.json();
+  const res = await getDB(c).prepare('INSERT INTO templates (name, config) VALUES (?, ?)').bind(name, JSON.stringify(config)).run();
+  return c.json({ status: 'ok', id: res.meta.last_row_id });
+});
+
+app.post('/api/templates/delete', authMiddleware, async (c) => {
+  const { id } = await c.req.json();
+  await getDB(c).prepare('DELETE FROM templates WHERE id = ?').bind(id).run();
+  return c.json({ status: 'ok' });
+});
+
+app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
+
+app.onError((err, c) => {
+  console.error(`[vKomari Error] ${err}`);
+  return c.json({ error: 'Internal Server Error', message: err.message }, 500);
+});
+
+// --- Cron scheduler: dual-panel simulation loop ---
+async function runCron(env, ctx) {
+  const db = env.DB;
+  const { results } = await db.prepare('SELECT * FROM nodes WHERE enabled = 1 AND report_enabled = 1').all();
+  if (!results || results.length === 0) return;
+
+  console.log(`[vKomari] Cron: ${results.length} enabled nodes`);
+
+  const reporters = [];
+  for (const node of results) {
+    if (node.komari_server && node.komari_token) {
+      reporters.push({ type: 'komari', inst: new KomariReporter(node) });
+    }
+    if (node.cfmonitor_server && node.cfmonitor_token) {
+      reporters.push({ type: 'cfmonitor', inst: new CFMonitorReporter(node) });
+    }
+  }
+
+  // Connect all reporters
+  for (const r of reporters) r.inst.connect();
+  await new Promise(resolve => setTimeout(resolve, 2000));
+
+  // ponytail: run for ~55s to stay within Worker limits (30s CPU + WS idle budget)
+  const start = Date.now();
+  const MAX_DURATION = 55000;
+
+  while (Date.now() - start < MAX_DURATION) {
+    const loopStart = Date.now();
+    for (const r of reporters) {
+      if (r.type === 'komari') {
+        r.inst.send();
+      } else {
+        r.inst.tick();
+      }
+    }
+    const elapsed = Date.now() - loopStart;
+    // Komari needs 1s interval, so wait at most 1s
+    const wait = Math.max(0, 1000 - elapsed);
+    if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+  }
+
+  for (const r of reporters) r.inst.close();
+  console.log(`[vKomari] Cron finished: ${Date.now() - start}ms`);
+}
+
+export default {
+  fetch: app.fetch,
+  scheduled: async (event, env, ctx) => {
+    ctx.waitUntil(runCron(env, ctx));
+  }
+};
