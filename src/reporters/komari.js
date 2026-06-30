@@ -13,6 +13,9 @@ export class KomariReporter {
     this.agent = new VirtualAgent(config);
     this.tickCount = 0;
     this.infoSent = false;
+    this.ws = null;
+    this.connecting = null;
+    this.nextConnectAt = 0;
   }
 
   get httpBase() {
@@ -21,6 +24,10 @@ export class KomariReporter {
 
   get reportUrl() {
     return `${this.httpBase}/api/clients/report?token=${encodeURIComponent(this.config.komari_token || '')}`;
+  }
+
+  get wsUrl() {
+    return `${this.httpBase.replace(/^http/, 'ws')}/api/clients/report?token=${encodeURIComponent(this.config.komari_token || '')}`;
   }
 
   async uploadBasicInfo() {
@@ -55,10 +62,33 @@ export class KomariReporter {
 
   async connect() {
     if (!this.infoSent) await this.uploadBasicInfo();
+    if (this.isOpen() || Date.now() < this.nextConnectAt) return;
+    if (this.connecting) return this.connecting;
+    this.connecting = this.connectWebSocket().finally(() => {
+      this.connecting = null;
+      this.nextConnectAt = this.isOpen() ? 0 : Date.now() + 5000;
+    });
+    return this.connecting;
   }
 
   isOpen() {
-    return true;
+    return this.ws && this.ws.readyState === 1;
+  }
+
+  async connectWebSocket() {
+    if (typeof WebSocket === 'undefined') return;
+    try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
+    this.ws = new WebSocket(this.wsUrl);
+    this.ws.addEventListener('close', () => { this.ws = null; });
+    this.ws.addEventListener('error', () => { this.ws = null; });
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      this.ws.addEventListener('open', finish);
+      this.ws.addEventListener('error', finish);
+      if (this.isOpen()) finish();
+      setTimeout(finish, 1500);
+    });
   }
 
   buildReport() {
@@ -84,14 +114,11 @@ export class KomariReporter {
 
   async send() {
     await this.connect();
-    try {
-      await fetch(this.reportUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.buildReport())
-      });
-    } catch {}
+    if (!this.isOpen()) return;
+    try { this.ws.send(JSON.stringify(this.buildReport())); } catch {}
   }
 
-  close() {}
+  close() {
+    if (this.ws) { try { this.ws.close(); } catch {} this.ws = null; }
+  }
 }

@@ -131,6 +131,7 @@ function avgFor(agent, key, count = 90) {
   const originalFetch = globalThis.fetch;
   const originalWebSocket = globalThis.WebSocket;
   const calls = [];
+  const sockets = [];
   const wsSends = [];
   globalThis.fetch = async (url, options = {}) => {
     calls.push({ url: String(url), method: options.method, body: options.body ? JSON.parse(options.body) : null });
@@ -139,9 +140,11 @@ function avgFor(agent, key, count = 90) {
   class FakeWebSocket {
     static CONNECTING = 0;
     static OPEN = 1;
-    constructor() {
+    constructor(url) {
+      this.url = url;
       this.readyState = 1;
       this.handlers = {};
+      sockets.push(this);
     }
     addEventListener(name, fn) { this.handlers[name] = fn; }
     send(body) { wsSends.push(JSON.parse(body)); }
@@ -157,8 +160,10 @@ function avgFor(agent, key, count = 90) {
     });
     await reporter.connect();
     await reporter.send();
-    assert(calls.some(call => call.url === 'https://komari.example/api/clients/report?token=token' && call.method === 'POST'), 'Komari should use HTTP POST reports so Worker cron handoffs keep presence alive');
-    assert.equal(wsSends.length, 0, 'Komari reporter should not depend on a long-lived WebSocket in Worker cron');
+    assert(calls.some(call => call.url === 'https://komari.example/api/clients/uploadBasicInfo?token=token' && call.method === 'POST'), 'Komari should still upload basic info over HTTP');
+    assert.equal(sockets[0]?.url, 'wss://komari.example/api/clients/report?token=token', 'Komari reports should use WebSocket to avoid Worker subrequest limits');
+    assert.equal(wsSends.length, 1, 'Komari reporter should send live report over WebSocket');
+    assert(!calls.some(call => call.url === 'https://komari.example/api/clients/report?token=token'), 'Komari must not spend one HTTP subrequest per second');
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.WebSocket = originalWebSocket;
@@ -290,5 +295,5 @@ assert(indexHtml.includes('window.cidrToIp'), 'country IP generation should use 
 const indexJs = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 assert(!indexJs.includes('setTimeout(resolve, 2000)'), 'Komari cron loop must not add a fixed 2s upload gap before sending');
 assert.match(indexJs, /MAX_DURATION\s*=\s*6[2-9]\d{3}/, 'Komari cron loop should overlap the next minute to hide handoff gaps');
-assert.match(indexJs, /await\s+r\.inst\.send\(\)/, 'cron must await Komari POST reports before the Worker tick ends');
+assert.match(indexJs, /await\s+r\.inst\.send\(\)/, 'cron must await Komari reports before the Worker tick ends');
 assert(!indexJs.includes('ctx.waitUntil(runCron'), 'scheduled handler should await the Komari loop directly so long cron work is not detached');
