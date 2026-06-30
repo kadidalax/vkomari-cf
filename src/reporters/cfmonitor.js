@@ -25,16 +25,35 @@ export class CFMonitorReporter {
     };
   }
 
-  async connect() {
-    if (!this.infoSent) {
-      await this.uploadBasicInfo();
-      this.infoSent = true;
-    }
+  reportIntervalSec() {
+    return Math.max(3, Number(this.config.report_interval) || 3);
   }
 
-  async uploadBasicInfo() {
+  policyReportIntervalSec() {
+    const fallbackMs = this.policy.mode === 'active' ? this.reportIntervalSec() * 1000 : 120000;
+    return Math.max(3, Math.round((Number(this.policy.reportInterval) || fallbackMs) / 1000));
+  }
+
+  regionLabel() {
+    const code = String(this.config.region || 'CN').toUpperCase();
+    const names = {
+      AE: 'Dubai, Dubai, AE',
+      CN: 'Shanghai, China, CN',
+      HK: 'Hong Kong, HK',
+      TW: 'Taipei, Taiwan, TW',
+      US: 'Los Angeles, California, US',
+      JP: 'Tokyo, Japan, JP',
+      SG: 'Singapore, SG',
+      DE: 'Frankfurt, Hesse, DE',
+      GB: 'London, England, GB',
+      NL: 'Amsterdam, North Holland, NL'
+    };
+    return names[code] || `${code} VPS`;
+  }
+
+  basicInfo() {
     const c = this.config;
-    const info = {
+    return {
       cpu_name: c.cpu_model || 'Intel Xeon',
       cpu_cores: parseInt(c.cpu_cores) || 2,
       arch: c.arch || 'amd64',
@@ -47,14 +66,24 @@ export class CFMonitorReporter {
       disk_total: this.agent.usable.disk,
       ipv4: c.fake_ip || '',
       ipv6: c.ipv6 || '',
-      region: (c.region || 'CN').toUpperCase(),
+      region: this.regionLabel(),
       version: '1.0.0'
     };
+  }
+
+  async connect() {
+    if (!this.infoSent) {
+      await this.uploadBasicInfo();
+      this.infoSent = true;
+    }
+  }
+
+  async uploadBasicInfo() {
     try {
       await fetch(`${this.httpBase}/api/clients/uploadBasicInfo`, {
         method: 'POST',
         headers: this.headers(),
-        body: JSON.stringify(info)
+        body: JSON.stringify(this.basicInfo())
       });
     } catch {}
   }
@@ -88,7 +117,7 @@ export class CFMonitorReporter {
       this.lastIdleBucket = bucket;
     }
 
-    const report = this.buildReport(now);
+    const report = this.buildReport(now, this.policyReportIntervalSec());
     const body = this.policy.mode === 'active' ? report : { reports: [report] };
     try {
       await fetch(`${this.httpBase}/api/clients/report`, {
@@ -99,14 +128,19 @@ export class CFMonitorReporter {
     } catch {}
   }
 
-  buildReport(now) {
+  buildReport(now, intervalSec = this.reportIntervalSec()) {
     const stats = this.agent.generateStats(this.tickCount++);
+    const interval = Math.max(3, Number(intervalSec) || this.reportIntervalSec());
+    const cpu = parseFloat(stats.cpu.toFixed(1));
     return {
-      cpu: parseFloat(stats.cpu.toFixed(1)),
+      cpu,
+      gpu: 0,
       ram: Math.round(this.agent.usable.ram * stats.mem / 100),
       ram_total: this.agent.usable.ram,
       swap: Math.round(this.agent.usable.swap * stats.swap / 100),
       swap_total: this.agent.usable.swap,
+      load: parseFloat((stats.cpu / 100 * (parseInt(this.config.cpu_cores) || 2)).toFixed(2)),
+      temp: parseFloat((34 + cpu * 0.42 + this.agent.nodeSeed * 5).toFixed(1)),
       disk: Math.round(this.agent.usable.disk * stats.disk / 100),
       disk_total: this.agent.usable.disk,
       net_in: stats.down,
@@ -120,8 +154,13 @@ export class CFMonitorReporter {
       timestamp: now,
       version: '1.0.0',
       name: this.config.name || '',
+      report_interval: interval,
+      interval_sec: interval,
       ipv4: this.config.fake_ip || '',
-      region: (this.config.region || 'CN').toUpperCase()
+      ipv6: this.config.ipv6 || '',
+      region: this.regionLabel(),
+      basic_info: this.basicInfo(),
+      gpus: []
     };
   }
 

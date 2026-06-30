@@ -12,6 +12,7 @@ router.post('/', async (c) => {
   const d = await c.req.json();
   if (!d.client_uuid) d.client_uuid = crypto.randomUUID();
   if (d.fake_ip === undefined) d.fake_ip = '';
+  if (!d.report_interval) d.report_interval = 3;
   if (!d.uptime_base) d.uptime_base = Math.floor(Math.random() * 7 + 1) * 86400;
   return c.json(await saveNode(getDB(c), d));
 });
@@ -63,6 +64,7 @@ router.post('/import', async (c) => {
     n = normalizeNodeData(n);
     if (!n.client_uuid) n.client_uuid = crypto.randomUUID();
     if (!n.fake_ip) n.fake_ip = '';
+    if (!n.report_interval) n.report_interval = 3;
     if (!n.uptime_base) n.uptime_base = Math.floor(Math.random() * 7 + 1) * 86400;
     stmts.push(db.prepare(`INSERT INTO nodes (${fields.join(',')}) VALUES (${fields.map(() => '?').join(',')})`).bind(...fields.map(k => n[k] === undefined ? null : n[k])));
   }

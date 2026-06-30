@@ -4,6 +4,7 @@ import { VirtualAgent } from '../src/agent.js';
 import { CFMonitorReporter } from '../src/reporters/cfmonitor.js';
 import { KomariReporter } from '../src/reporters/komari.js';
 import { normalizeNodeData } from '../src/db.js';
+import { cidrToIp } from '../public/js/ip.js';
 
 function avg(profile, key) {
   const agent = new VirtualAgent({
@@ -36,6 +37,8 @@ assert.equal(normalized.cpu_min, 61.1, 'CPU min/max should be sorted before save
 assert.equal(normalized.cpu_max, 100, 'CPU min/max should be sorted before save');
 assert.equal(normalized.disk_min, 30.8, 'disk min/max should be sorted before save');
 assert.equal(normalized.disk_max, 31.1, 'disk min/max should be sorted before save');
+assert.equal(cidrToIp('15.0.0.0/4', () => 0), '15.0.0.1', 'country IP generation should stay inside the declared country block');
+assert.match(cidrToIp('36.96.0.0/9', () => 0.99), /^36\.(?:9[6-9]|1\d\d|2[01]\d|22[0-3])\./, 'CN IP should stay inside the configured CN block');
 
 const zeroRangeAgent = new VirtualAgent({
   name: 'zero-range-node',
@@ -164,6 +167,31 @@ assert(avg('high', 'mem') > avg('mid', 'mem') + 20, 'high memory should be clear
 assert(avg('high', 'disk') > avg('low', 'disk') + 35, 'disk load should differ by profile');
 assert(avg('high', 'down') > avg('low', 'down') * 5, 'network load should differ by profile');
 
+{
+  const reporter = new CFMonitorReporter({
+    name: 'cf-demo',
+    region: 'AE',
+    fake_ip: '94.202.159.66',
+    report_interval: 3,
+    ram_total: 2048,
+    swap_total: 512,
+    disk_total: 20480,
+    cpu_model: 'Intel Xeon',
+    cpu_cores: 2,
+    os: 'Debian 12',
+    arch: 'amd64',
+    virtualization: 'kvm'
+  });
+  const report = reporter.buildReport(Date.now());
+  assert.equal(report.report_interval, 3, 'CF monitor report should include report_interval for live TTL');
+  assert.equal(reporter.buildReport(Date.now(), 120).report_interval, 120, 'CF monitor idle report should use 120s TTL interval');
+  assert(report.load > 0, 'CF monitor report should include load instead of always reporting 0');
+  assert(report.temp > 0, 'CF monitor report should include realistic temperature instead of always reporting 0');
+  assert.equal(report.ipv4, '94.202.159.66', 'CF monitor report should carry configured fake IPv4');
+  assert.equal(report.basic_info?.ipv4, '94.202.159.66', 'CF monitor report should carry basic_info for metadata sync');
+  assert.notEqual(report.region, 'AE', 'CF monitor region should not be a bare country code that the panel prefers below edge region');
+}
+
 const { parseInstallScript } = await import('../public/js/install.js');
 
 assert.deepEqual(
@@ -185,7 +213,9 @@ assert.deepEqual(
 const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 assert.match(indexHtml, /@click="refreshLoad\(\)"/, 'modal random button should refresh load only');
 assert(!indexHtml.includes('randomizeConfig'), 'refresh load must not randomize node hardware, OS, region, IP, or tokens');
+assert(indexHtml.includes('sessionExpired'), 'expired login state should have a visible page/message');
+assert(indexHtml.includes('window.cidrToIp'), 'country IP generation should use the shared tested CIDR helper');
 
 const indexJs = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 assert(!indexJs.includes('setTimeout(resolve, 2000)'), 'Komari cron loop must not add a fixed 2s upload gap before sending');
-assert.match(indexJs, /MAX_DURATION\s*=\s*59\d{3}/, 'Komari cron loop should run close to the full minute');
+assert.match(indexJs, /MAX_DURATION\s*=\s*6[2-9]\d{3}/, 'Komari cron loop should overlap the next minute to hide handoff gaps');

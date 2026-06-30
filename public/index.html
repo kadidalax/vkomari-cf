@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script src="js/data.js"></script>
+  <script type="module" src="js/ip.js"></script>
   <script type="module" src="js/install.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <script src="js/api.js"></script>
@@ -39,6 +40,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
       <form @submit.prevent="login" class="space-y-4">
         <input type="text" x-model="loginForm.username" autocomplete="username" placeholder="用户名" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500 transition">
         <input type="password" x-model="loginForm.password" autocomplete="current-password" placeholder="密码" class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500 transition">
+        <div x-show="sessionExpired" class="text-amber-300 text-sm text-center bg-amber-900/20 py-2 rounded">登录已过期，请重新登录</div>
         <div x-show="loginError" class="text-red-400 text-sm text-center bg-red-900/20 py-2 rounded" x-text="loginError"></div>
         <button type="submit" class="w-full bg-violet-600 hover:bg-violet-500 text-white py-3 rounded-lg font-semibold transition shadow-lg shadow-violet-900/20">登 录</button>
       </form>
@@ -334,7 +336,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
 <script>
 function app(){return{
   token:localStorage.getItem('vkomari_token')||'',
-  loginForm:{username:'admin',password:''},loginError:'',
+  loginForm:{username:'admin',password:''},loginError:'',sessionExpired:false,
   nodes:[],showModal:false,showPwdModal:false,isDefaultPwd:false,newPassword:'',
   form:{},countrySearch:'',installScript:'',parseResult:'',
   toasts:[],searchQuery:'',searchOpen:false,activeGroup:'',newTemplateName:'',
@@ -367,11 +369,11 @@ function app(){return{
   },
 
   async validateToken(){
-    try{await API.me();this.loadNodes();this.loadTemplates();setInterval(()=>{this.loadNodes();this.loadTemplates()},30000)}catch(e){API.clearToken();this.token='';this.nodes=[]}
+    try{await API.me();this.sessionExpired=false;this.loadNodes();this.loadTemplates();setInterval(()=>{this.loadNodes();this.loadTemplates()},30000)}catch(e){API.clearToken();this.token='';this.nodes=[];this.sessionExpired=true}
   },
 
   async login(){
-    try{const r=await API.login(this.loginForm.username,this.loginForm.password);API.setToken(r.token);this.token=r.token;if(r.isDefault) this.isDefaultPwd=true;this.loginError='';this.loadNodes();this.loadTemplates()}catch(e){this.loginError=e.message||'登录失败'}
+    try{const r=await API.login(this.loginForm.username,this.loginForm.password);API.setToken(r.token);this.token=r.token;if(r.isDefault) this.isDefaultPwd=true;this.loginError='';this.sessionExpired=false;this.loadNodes();this.loadTemplates()}catch(e){this.loginError=e.message||'登录失败'}
   },
 
   logout(){API.clearToken();this.token='';this.nodes=[];location.reload()},
@@ -383,7 +385,7 @@ function app(){return{
   async batchAction(a){try{await API.batchNodes(a);await this.loadNodes();this.notify(a==='start'?'已全部启动':'已全部停止','success')}catch(e){this.notify('操作失败: '+e.message,'error')}},
   async deleteNode(id){const ok=await this.showConfirm('删除节点','确定删除此节点？','danger','删除');if(!ok)return;try{await API.deleteNode(id);await this.loadNodes();this.notify('节点已删除','success')}catch(e){this.notify('删除失败: '+e.message,'error')}},
 
-  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',report_interval:1,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.refreshLoad(false);this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
+  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',report_interval:3,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.refreshLoad(false);this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
 
   editNode(n){this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.form.boot_date=n.boot_time?new Date(n.boot_time*1000).toISOString().slice(0,10):'';this.initUnits();this.showModal=true},
 
@@ -406,7 +408,7 @@ function app(){return{
     const data={...f,
       name:f.name||'VPS-'+Math.floor(Math.random()*1000),
       report_enabled:f.report_enabled?1:0,enabled:f.enabled?1:0,
-      report_interval:Number(f.report_interval)||1,traffic_reset_day:Number(f.traffic_reset_day)||1,
+      report_interval:Number(f.report_interval)||3,traffic_reset_day:Number(f.traffic_reset_day)||1,
       boot_time:bootTime,uptime_base:bootTime?Math.max(0,Math.floor(Date.now()/1000)-bootTime):(f.uptime_base||86400),
       client_uuid:f.client_uuid||crypto.randomUUID(),
       sort_order:f.sort_order||0,group_name:f.group_name||''
@@ -470,6 +472,7 @@ function app(){return{
   },
 
   cidrToIp(cidr){
+    if(window.cidrToIp) return window.cidrToIp(cidr);
     const [range,maskText]=cidr.split('/');
     const mask=Number(maskText);
     const parts=range.split('.').map(Number);

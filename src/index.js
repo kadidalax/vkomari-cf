@@ -77,7 +77,7 @@ async function runCron(env, ctx) {
   }
 
   const start = Date.now();
-  const MAX_DURATION = 59000;
+  const MAX_DURATION = 65000;
 
   while (Date.now() - start < MAX_DURATION) {
     const loopStart = Date.now();
