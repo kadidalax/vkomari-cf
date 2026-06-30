@@ -227,6 +227,42 @@ assert(avg('high', 'down') > avg('low', 'down') * 5, 'network load should differ
   }
 }
 
+{
+  const originalFetch = globalThis.fetch;
+  const originalWebSocket = globalThis.WebSocket;
+  const sockets = [];
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ type: 'policy', mode: 'idle' }) });
+  class FailingWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSED = 3;
+    constructor() {
+      this.readyState = 0;
+      this.handlers = {};
+      sockets.push(this);
+      queueMicrotask(() => this.handlers.error?.({ type: 'error' }));
+    }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+    send() {}
+    close() { this.readyState = 3; }
+  }
+  globalThis.WebSocket = FailingWebSocket;
+  try {
+    const reporter = new CFMonitorReporter({
+      cfmonitor_server: 'https://cf.example',
+      cfmonitor_token: 'cf-token',
+      ram_total: 1024,
+      disk_total: 10240
+    });
+    await reporter.tick();
+    await reporter.tick();
+    assert.equal(sockets.length, 1, 'failed CF monitor WebSocket connects should back off instead of blocking every cron tick');
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
+  }
+}
+
 const { parseInstallScript } = await import('../public/js/install.js');
 
 assert.deepEqual(
@@ -255,3 +291,4 @@ const indexJs = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8'
 assert(!indexJs.includes('setTimeout(resolve, 2000)'), 'Komari cron loop must not add a fixed 2s upload gap before sending');
 assert.match(indexJs, /MAX_DURATION\s*=\s*6[2-9]\d{3}/, 'Komari cron loop should overlap the next minute to hide handoff gaps');
 assert.match(indexJs, /await\s+r\.inst\.send\(\)/, 'cron must await Komari POST reports before the Worker tick ends');
+assert(!indexJs.includes('ctx.waitUntil(runCron'), 'scheduled handler should await the Komari loop directly so long cron work is not detached');

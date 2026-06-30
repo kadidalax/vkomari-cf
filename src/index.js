@@ -102,6 +102,6 @@ async function runCron(env, ctx) {
 export default {
   fetch: app.fetch,
   scheduled: async (event, env, ctx) => {
-    ctx.waitUntil(runCron(env, ctx));
+    await runCron(env, ctx);
   }
 };

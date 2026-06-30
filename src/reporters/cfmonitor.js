@@ -9,6 +9,7 @@ export class CFMonitorReporter {
     this.policy = { mode: 'idle', sampleInterval: 120000, reportInterval: 120000 };
     this.ws = null;
     this.connecting = null;
+    this.nextConnectAt = 0;
     this.lastSample = 0;
     this.lastPolicyAt = 0;
     this.lastIdleBucket = -1;
@@ -83,8 +84,12 @@ export class CFMonitorReporter {
       await this.uploadBasicInfo();
       this.infoSent = true;
     }
+    if (!this.isOpen() && Date.now() < this.nextConnectAt) return;
     if (this.isOpen() || this.connecting) return this.connecting;
-    this.connecting = this.connectWebSocket().finally(() => { this.connecting = null; });
+    this.connecting = (async () => {
+      try { await this.connectWebSocket(); }
+      finally { this.nextConnectAt = this.isOpen() ? 0 : Date.now() + 60000; }
+    })().finally(() => { this.connecting = null; });
     return this.connecting;
   }
 
