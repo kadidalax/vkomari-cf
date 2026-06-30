@@ -7,14 +7,47 @@ export class KomariReporter {
     this.agent = new VirtualAgent(config);
     this.ws = null;
     this.tick = 0;
+    this.infoSent = false;
+  }
+
+  get httpBase() {
+    return (this.config.komari_server || '').replace(/\/+$/, '');
   }
 
   get wsUrl() {
-    const base = (this.config.komari_server || '').replace(/\/+$/, '');
-    return `${base.replace(/^http/, 'ws')}/api/clients/report?token=${encodeURIComponent(this.config.komari_token || '')}`;
+    return `${this.httpBase.replace(/^http/, 'ws')}/api/clients/report?token=${encodeURIComponent(this.config.komari_token || '')}`;
   }
 
-  connect() {
+  async uploadBasicInfo() {
+    const c = this.config;
+    const info = {
+      cpu_name: c.cpu_model || 'Virtual CPU',
+      cpu_cores: Number(c.cpu_cores) || 1,
+      cpu_physical_cores: Number(c.cpu_cores) || 1,
+      arch: c.arch || 'amd64',
+      os: c.os || 'Linux',
+      kernel_version: c.kernel_version || '',
+      ipv4: c.fake_ip || c.ipv4 || '',
+      ipv6: c.ipv6 || '',
+      mem_total: this.agent.usable.ram,
+      swap_total: this.agent.usable.swap,
+      disk_total: this.agent.usable.disk,
+      gpu_name: c.gpu_name || '',
+      virtualization: c.virtualization || 'kvm',
+      version: '1.0.0'
+    };
+    try {
+      await fetch(`${this.httpBase}/api/clients/uploadBasicInfo?token=${encodeURIComponent(c.komari_token || '')}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(info)
+      });
+      this.infoSent = true;
+    } catch {}
+  }
+
+  async connect() {
+    if (!this.infoSent) await this.uploadBasicInfo();
     if (this.ws) { try { this.ws.close(); } catch {} }
     this.ws = new WebSocket(this.wsUrl);
     this.ws.addEventListener('open', () => console.log(`[Komari] Connected: ${this.config.name}`));
@@ -26,6 +59,7 @@ export class KomariReporter {
   }
 
   send() {
+    if (this.ws && this.ws.readyState === 0) return;
     if (!this.isOpen()) { this.connect(); return; }
     const stats = this.agent.generateStats(this.tick++);
     const payload = JSON.stringify({

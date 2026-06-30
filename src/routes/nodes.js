@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import crypto from 'node:crypto';
 import { authMiddleware } from '../auth.js';
-import { getDB, getNodes, saveNode } from '../db.js';
+import { getDB, getNodes, saveNode, normalizeNodeData } from '../db.js';
 
 const router = new Hono();
 router.use('*', authMiddleware);
@@ -59,7 +59,8 @@ router.post('/import', async (c) => {
   const db = getDB(c);
   const stmts = [];
   const fields = ['name', 'server_address', 'client_secret', 'client_uuid', 'cpu_model', 'cpu_cores', 'ram_total', 'swap_total', 'disk_total', 'os', 'arch', 'virtualization', 'region', 'kernel_version', 'load_profile', 'cpu_min', 'cpu_max', 'mem_min', 'mem_max', 'swap_min', 'swap_max', 'disk_min', 'disk_max', 'net_min', 'net_max', 'conn_min', 'conn_max', 'proc_min', 'proc_max', 'report_interval', 'enabled', 'boot_time', 'fake_ip', 'group_name', 'gpu_name', 'ipv6', 'traffic_reset_day', 'uptime_base', 'sort_order', 'komari_server', 'komari_token', 'cfmonitor_server', 'cfmonitor_token', 'report_enabled'];
-  for (const n of nodes) {
+  for (let n of nodes) {
+    n = normalizeNodeData(n);
     if (!n.client_uuid) n.client_uuid = crypto.randomUUID();
     if (!n.fake_ip) n.fake_ip = '';
     if (!n.uptime_base) n.uptime_base = Math.floor(Math.random() * 7 + 1) * 86400;

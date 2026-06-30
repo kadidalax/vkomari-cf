@@ -24,8 +24,8 @@ export class VirtualAgent {
   _calcUsable() {
     const c = this.config;
     return {
-      ram: Math.floor(Number(c.ram_total || 1024) * (0.94 + this.nodeSeed * 0.04) * 1048576),
-      disk: Math.floor(Number(c.disk_total || 10240) * (0.91 + this.nodeSeed * 0.04) * 1048576),
+      ram: Math.floor(Number(c.ram_total || 1024) * 1048576),
+      disk: Math.floor(Number(c.disk_total || 10240) * 1048576),
       swap: Math.floor(Number(c.swap_total || 0) * 1048576)
     };
   }

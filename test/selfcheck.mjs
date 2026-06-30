@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { VirtualAgent } from '../src/agent.js';
 import { CFMonitorReporter } from '../src/reporters/cfmonitor.js';
+import { KomariReporter } from '../src/reporters/komari.js';
+import { normalizeNodeData } from '../src/db.js';
 
 function avg(profile, key) {
   const agent = new VirtualAgent({
@@ -17,6 +19,55 @@ function avg(profile, key) {
 }
 
 assert.equal(typeof new CFMonitorReporter({}).tick, 'function', 'CF monitor tick method must not be shadowed');
+
+const exactAgent = new VirtualAgent({
+  name: 'exact-total-node',
+  ram_total: 1024,
+  swap_total: 2048,
+  disk_total: 100
+});
+assert.equal(exactAgent.usable.ram, 1024 * 1048576, 'reported RAM total must match configured MB');
+assert.equal(exactAgent.usable.swap, 2048 * 1048576, 'reported swap total must match configured MB');
+assert.equal(exactAgent.usable.disk, 100 * 1048576, 'reported disk total must match configured MB');
+
+const normalized = normalizeNodeData({ cpu_min: 100, cpu_max: 61.1, mem_min: 35.2, mem_max: 41.6, disk_min: 31.1, disk_max: 30.8 });
+assert.equal(normalized.cpu_min, 61.1, 'CPU min/max should be sorted before save');
+assert.equal(normalized.cpu_max, 100, 'CPU min/max should be sorted before save');
+assert.equal(normalized.disk_min, 30.8, 'disk min/max should be sorted before save');
+assert.equal(normalized.disk_max, 31.1, 'disk min/max should be sorted before save');
+
+{
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), body: JSON.parse(options.body) });
+    return { ok: true };
+  };
+  try {
+    const reporter = new KomariReporter({
+      komari_server: 'https://komari.example',
+      komari_token: 'token',
+      cpu_model: 'Intel Xeon',
+      cpu_cores: 2,
+      arch: 'amd64',
+      os: 'Debian 12',
+      kernel_version: '6.1.0',
+      fake_ip: '154.126.95.20',
+      ram_total: 1024,
+      swap_total: 2048,
+      disk_total: 100,
+      virtualization: 'kvm'
+    });
+    await reporter.uploadBasicInfo();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(calls[0].url, 'https://komari.example/api/clients/uploadBasicInfo?token=token');
+  assert.equal(calls[0].body.mem_total, 1024 * 1048576, 'Komari basic info RAM total must match config');
+  assert.equal(calls[0].body.swap_total, 2048 * 1048576, 'Komari basic info swap total must match config');
+  assert.equal(calls[0].body.disk_total, 100 * 1048576, 'Komari basic info disk total must match config');
+}
+
 assert(avg('mid', 'mem') > avg('low', 'mem') + 15, 'mid memory should be clearly above low');
 assert(avg('high', 'mem') > avg('mid', 'mem') + 20, 'high memory should be clearly above mid');
 assert(avg('high', 'disk') > avg('low', 'disk') + 35, 'disk load should differ by profile');

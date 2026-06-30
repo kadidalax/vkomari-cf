@@ -26,7 +26,7 @@ export function getDB(c) {
 
 export async function getNodes(db) {
   const { results } = await db.prepare('SELECT * FROM nodes ORDER BY sort_order ASC, id DESC').all();
-  return results.map(r => ({ ...r, online: !!r.enabled, sendCount: 0, uptime: 0, lastError: '' }));
+  return results.map(r => ({ ...normalizeNodeData(r), online: !!r.enabled, sendCount: 0, uptime: 0, lastError: '' }));
 }
 
 export async function getEnabledNodes(db) {
@@ -47,6 +47,29 @@ export async function getTemplates(db) {
   return results.map(r => ({ id: r.id, name: r.name, config: JSON.parse(r.config) }));
 }
 
+export function normalizeNodeData(data) {
+  const out = { ...data };
+  for (const [minKey, maxKey, limit] of [
+    ['cpu_min', 'cpu_max', 100],
+    ['mem_min', 'mem_max', 100],
+    ['swap_min', 'swap_max', 100],
+    ['disk_min', 'disk_max', 100],
+    ['net_min', 'net_max', Infinity],
+    ['conn_min', 'conn_max', Infinity],
+    ['proc_min', 'proc_max', Infinity]
+  ]) {
+    let min = Number(out[minKey]);
+    let max = Number(out[maxKey]);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) continue;
+    min = Math.max(0, Math.min(limit, min));
+    max = Math.max(0, Math.min(limit, max));
+    if (max < min) [min, max] = [max, min];
+    out[minKey] = min;
+    out[maxKey] = max;
+  }
+  return out;
+}
+
 const NODE_FIELDS = [
   'name', 'server_address', 'client_secret', 'client_uuid', 'cpu_model', 'cpu_cores',
   'ram_total', 'swap_total', 'disk_total', 'os', 'arch', 'virtualization', 'region',
@@ -59,6 +82,7 @@ const NODE_FIELDS = [
 ];
 
 export async function saveNode(db, data) {
+  data = normalizeNodeData(data);
   const values = NODE_FIELDS.map(k => data[k] === undefined ? null : data[k]);
 
   if (data.id) {
