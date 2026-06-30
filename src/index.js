@@ -3,12 +3,18 @@ import { cors } from 'hono/cors';
 import authRoutes from './routes/auth.js';
 import nodeRoutes from './routes/nodes.js';
 import { authMiddleware } from './auth.js';
-import { getDB, getTemplates } from './db.js';
+import { getDB, getTemplates, ensureSchema } from './db.js';
 import { KomariReporter } from './reporters/komari.js';
 import { CFMonitorReporter } from './reporters/cfmonitor.js';
 
 const app = new Hono();
 app.use('/api/*', cors());
+
+// Auto-initialize DB schema on first request
+app.use('*', async (c, next) => {
+  if (c.env.DB) await ensureSchema(c.env.DB).catch(() => {});
+  await next();
+});
 
 // Auth routes
 app.route('/api', authRoutes);
@@ -49,6 +55,8 @@ app.onError((err, c) => {
 // --- Cron scheduler: dual-panel simulation loop ---
 async function runCron(env, ctx) {
   const db = env.DB;
+  if (!db) return;
+  await ensureSchema(db).catch(() => {});
   const { results } = await db.prepare('SELECT * FROM nodes WHERE enabled = 1 AND report_enabled = 1').all();
   if (!results || results.length === 0) return;
 
