@@ -3,8 +3,9 @@ import { VirtualAgent } from '../agent.js';
 import { openReporterWebSocket } from './ws.js';
 
 export class CFMonitorReporter {
-  constructor(config) {
+  constructor(config, env = {}) {
     this.config = config;
+    this.env = env;
     this.agent = new VirtualAgent(config);
     this.tickCount = 0;
     this.policy = { mode: 'idle', sampleInterval: 120000, reportInterval: 120000 };
@@ -19,20 +20,41 @@ export class CFMonitorReporter {
   }
 
   get httpBase() {
-    const base = (this.config.cfmonitor_server || '').replace(/\/+$/, '');
+    const base = String(this.config.cfmonitor_server || '').trim().replace(/\/+$/, '');
     return base.replace(/^ws/, 'http');
   }
 
   get wsUrl() {
-    const base = (this.config.cfmonitor_server || '').replace(/\/+$/, '').replace(/^http/, 'ws');
-    return `${base}/api/clients/report?token=${encodeURIComponent(this.config.cfmonitor_token || '')}`;
+    const base = String(this.config.cfmonitor_server || '').trim().replace(/\/+$/, '').replace(/^http/, 'ws');
+    return `${base}/api/clients/report?token=${encodeURIComponent(String(this.config.cfmonitor_token || '').trim())}`;
   }
 
   headers() {
     return {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${this.config.cfmonitor_token || ''}`
+      'Authorization': `Bearer ${String(this.config.cfmonitor_token || '').trim()}`
     };
+  }
+
+  fetcher() {
+    const service = this.env?.CF_MONITOR;
+    if (!service?.fetch) return null;
+    try {
+      const host = new URL(this.httpBase).hostname.toLowerCase();
+      const allowed = String(this.env?.CF_MONITOR_SERVICE_HOSTS || 'cf-vps-monitor-demo.work-631.workers.dev')
+        .split(',')
+        .map(h => h.trim().toLowerCase())
+        .filter(Boolean);
+      return allowed.includes(host) ? service : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async targetFetch(path, options = {}) {
+    const fetcher = this.fetcher();
+    const url = `${this.httpBase}${path}`;
+    return fetcher ? fetcher.fetch(new Request(url, options)) : fetch(url, options);
   }
 
   reportIntervalSec() {
@@ -101,7 +123,7 @@ export class CFMonitorReporter {
 
   async connectWebSocket() {
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
-    this.ws = await openReporterWebSocket(this.wsUrl, this.logName());
+    this.ws = await openReporterWebSocket(this.wsUrl, this.logName(), this.fetcher());
     if (!this.ws) return;
     this.ws.addEventListener('message', (event) => {
       try { this.applyPolicy(JSON.parse(event.data)); } catch {}
@@ -120,7 +142,7 @@ export class CFMonitorReporter {
 
   async uploadBasicInfo() {
     try {
-      await fetch(`${this.httpBase}/api/clients/uploadBasicInfo`, {
+      await this.targetFetch('/api/clients/uploadBasicInfo', {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify(this.basicInfo())
@@ -132,7 +154,7 @@ export class CFMonitorReporter {
     if (now - this.lastPolicyAt < 10000) return;
     this.lastPolicyAt = now;
     try {
-      const res = await fetch(`${this.httpBase}/api/clients/policy`, { headers: this.headers() });
+      const res = await this.targetFetch('/api/clients/policy', { headers: this.headers() });
       if (!res.ok) return;
       const msg = await res.json();
       this.applyPolicy(msg);
@@ -178,7 +200,7 @@ export class CFMonitorReporter {
   async sendHttp(now) {
     if (!this.shouldSend(now)) return;
     try {
-      const res = await fetch(`${this.httpBase}/api/clients/report`, {
+      const res = await this.targetFetch('/api/clients/report', {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify(this.reportBody(now))

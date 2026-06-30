@@ -1,8 +1,11 @@
-export async function openReporterWebSocket(wsUrl, label = 'reporter') {
+export async function openReporterWebSocket(wsUrl, label = 'reporter', fetcher = null) {
   const safeUrl = safeWebSocketUrl(wsUrl);
-  if (typeof fetch === 'function') {
+  const httpUrl = wsUrl.replace(/^ws/i, 'http');
+  if (fetcher?.fetch || typeof fetch === 'function') {
     try {
-      const res = await fetch(wsUrl.replace(/^ws/i, 'http'), { headers: { Upgrade: 'websocket' } });
+      const res = fetcher?.fetch
+        ? await fetcher.fetch(new Request(httpUrl, { headers: { Upgrade: 'websocket' } }))
+        : await fetch(httpUrl, { headers: { Upgrade: 'websocket' } });
       if (res.webSocket) {
         res.webSocket.accept?.();
         console.log(`[vKomari] ${label} ws upgrade ok: ${safeUrl}`);

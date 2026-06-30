@@ -68,7 +68,7 @@ async function runCron(env, ctx) {
       reporters.push({ type: 'komari', inst: new KomariReporter(node) });
     }
     if (node.cfmonitor_server && node.cfmonitor_token) {
-      reporters.push({ type: 'cfmonitor', inst: new CFMonitorReporter(node) });
+      reporters.push({ type: 'cfmonitor', inst: new CFMonitorReporter(node, env) });
     }
   }
 
