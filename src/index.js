@@ -83,7 +83,7 @@ async function runCron(env, ctx) {
     const loopStart = Date.now();
     for (const r of reporters) {
       try {
-        if (r.type === 'komari') r.inst.send();
+        if (r.type === 'komari') await r.inst.send();
         else await r.inst.tick();
       } catch (err) {
         console.error(`[vKomari] reporter failed: ${r.type}`, err);

@@ -1,13 +1,17 @@
-// Komari panel reporter: WebSocket v1, sends every 1 second
+// Komari panel reporter: HTTP POST, sends every 1 second.
 import { VirtualAgent } from '../agent.js';
+
+function countryFlag(region) {
+  const code = String(region || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return String(region || '').trim();
+  return [...code].map(ch => String.fromCodePoint(0x1f1e6 + ch.charCodeAt(0) - 65)).join('');
+}
 
 export class KomariReporter {
   constructor(config) {
     this.config = config;
     this.agent = new VirtualAgent(config);
-    this.ws = null;
-    this.connecting = null;
-    this.tick = 0;
+    this.tickCount = 0;
     this.infoSent = false;
   }
 
@@ -15,12 +19,13 @@ export class KomariReporter {
     return (this.config.komari_server || '').replace(/\/+$/, '');
   }
 
-  get wsUrl() {
-    return `${this.httpBase.replace(/^http/, 'ws')}/api/clients/report?token=${encodeURIComponent(this.config.komari_token || '')}`;
+  get reportUrl() {
+    return `${this.httpBase}/api/clients/report?token=${encodeURIComponent(this.config.komari_token || '')}`;
   }
 
   async uploadBasicInfo() {
     const c = this.config;
+    const region = countryFlag(c.region);
     const info = {
       cpu_name: c.cpu_model || 'Virtual CPU',
       cpu_cores: Number(c.cpu_cores) || 1,
@@ -37,6 +42,7 @@ export class KomariReporter {
       virtualization: c.virtualization || 'kvm',
       version: '1.0.0'
     };
+    if (region) info.region = region;
     try {
       await fetch(`${this.httpBase}/api/clients/uploadBasicInfo?token=${encodeURIComponent(c.komari_token || '')}`, {
         method: 'POST',
@@ -48,33 +54,16 @@ export class KomariReporter {
   }
 
   async connect() {
-    if (this.connecting) return this.connecting;
-    this.connecting = this._connect().finally(() => { this.connecting = null; });
-    return this.connecting;
-  }
-
-  async _connect() {
     if (!this.infoSent) await this.uploadBasicInfo();
-    if (this.ws) { try { this.ws.close(); } catch {} }
-    this.ws = new WebSocket(this.wsUrl);
-    await new Promise((resolve) => {
-      let done = false;
-      const finish = () => { if (!done) { done = true; resolve(); } };
-      this.ws.addEventListener('open', () => { console.log(`[Komari] Connected: ${this.config.name}`); finish(); });
-      this.ws.addEventListener('error', finish);
-      setTimeout(finish, 1500);
-    });
   }
 
   isOpen() {
-    return this.ws && this.ws.readyState === 1;
+    return true;
   }
 
-  send() {
-    if (this.ws && this.ws.readyState === 0) return;
-    if (!this.isOpen()) { this.connect(); return; }
-    const stats = this.agent.generateStats(this.tick++);
-    const payload = JSON.stringify({
+  buildReport() {
+    const stats = this.agent.generateStats(this.tickCount++);
+    return {
       cpu: { usage: parseFloat(stats.cpu.toFixed(1)) },
       ram: { total: this.agent.usable.ram, used: Math.round(this.agent.usable.ram * stats.mem / 100) },
       swap: { total: this.agent.usable.swap, used: Math.round(this.agent.usable.swap * stats.swap / 100) },
@@ -90,11 +79,19 @@ export class KomariReporter {
       process: stats.proc,
       gpu: {},
       message: ''
-    });
-    try { this.ws.send(payload); } catch {}
+    };
   }
 
-  close() {
-    if (this.ws) { try { this.ws.close(); } catch {} this.ws = null; }
+  async send() {
+    await this.connect();
+    try {
+      await fetch(this.reportUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.buildReport())
+      });
+    } catch {}
   }
+
+  close() {}
 }

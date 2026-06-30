@@ -1,4 +1,4 @@
-// CF-VPS-Monitor reporter: HTTP policy mode (active=3s, idle=120s).
+// CF-VPS-Monitor reporter: Agent WebSocket policy mode, HTTP idle fallback.
 import { VirtualAgent } from '../agent.js';
 
 export class CFMonitorReporter {
@@ -7,6 +7,8 @@ export class CFMonitorReporter {
     this.agent = new VirtualAgent(config);
     this.tickCount = 0;
     this.policy = { mode: 'idle', sampleInterval: 120000, reportInterval: 120000 };
+    this.ws = null;
+    this.connecting = null;
     this.lastSample = 0;
     this.lastPolicyAt = 0;
     this.lastIdleBucket = -1;
@@ -16,6 +18,11 @@ export class CFMonitorReporter {
   get httpBase() {
     const base = (this.config.cfmonitor_server || '').replace(/\/+$/, '');
     return base.replace(/^ws/, 'http');
+  }
+
+  get wsUrl() {
+    const base = (this.config.cfmonitor_server || '').replace(/\/+$/, '').replace(/^http/, 'ws');
+    return `${base}/api/clients/report?token=${encodeURIComponent(this.config.cfmonitor_token || '')}`;
   }
 
   headers() {
@@ -76,6 +83,32 @@ export class CFMonitorReporter {
       await this.uploadBasicInfo();
       this.infoSent = true;
     }
+    if (this.isOpen() || this.connecting) return this.connecting;
+    this.connecting = this.connectWebSocket().finally(() => { this.connecting = null; });
+    return this.connecting;
+  }
+
+  isOpen() {
+    return this.ws && this.ws.readyState === 1;
+  }
+
+  async connectWebSocket() {
+    if (typeof WebSocket === 'undefined') return;
+    try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
+    this.ws = new WebSocket(this.wsUrl);
+    this.ws.addEventListener('message', (event) => {
+      try { this.applyPolicy(JSON.parse(event.data)); } catch {}
+    });
+    this.ws.addEventListener('close', () => { this.ws = null; });
+    this.ws.addEventListener('error', () => { this.ws = null; });
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      this.ws.addEventListener('open', finish);
+      this.ws.addEventListener('error', finish);
+      if (this.isOpen()) finish();
+      setTimeout(finish, 1500);
+    });
   }
 
   async uploadBasicInfo() {
@@ -95,37 +128,60 @@ export class CFMonitorReporter {
       const res = await fetch(`${this.httpBase}/api/clients/policy`, { headers: this.headers() });
       if (!res.ok) return;
       const msg = await res.json();
-      if (msg.type !== 'policy') return;
-      this.policy.mode = msg.mode || 'idle';
-      this.policy.sampleInterval = (msg.sample_interval_sec || 120) * 1000;
-      this.policy.reportInterval = (msg.report_interval_sec || 120) * 1000;
-      if (msg.report_now) this.lastSample = 0;
+      this.applyPolicy(msg);
     } catch {}
+  }
+
+  applyPolicy(msg) {
+    if (msg?.type !== 'policy') return;
+    this.policy.mode = msg.mode || 'idle';
+    this.policy.sampleInterval = (msg.sample_interval_sec || 120) * 1000;
+    this.policy.reportInterval = (msg.report_interval_sec || 120) * 1000;
+    if (msg.report_now) this.lastSample = 0;
   }
 
   async tick() {
     const now = Date.now();
     await this.connect();
-    await this.refreshPolicy(now);
+    if (!this.isOpen()) {
+      await this.refreshPolicy(now);
+      return this.sendHttp(now);
+    }
 
+    return this.sendWebSocket(now);
+  }
+
+  shouldSend(now) {
     if (this.policy.mode === 'active') {
-      if (now - this.lastSample < this.policy.sampleInterval) return;
+      if (now - this.lastSample < this.policy.sampleInterval) return false;
       this.lastSample = now;
     } else {
       const bucket = Math.floor(now / Math.max(60000, this.policy.reportInterval));
-      if (new Date(now).getUTCMinutes() % 2 !== 0 || bucket === this.lastIdleBucket) return;
+      if (new Date(now).getUTCMinutes() % 2 !== 0 || bucket === this.lastIdleBucket) return false;
       this.lastIdleBucket = bucket;
     }
+    return true;
+  }
 
+  reportBody(now) {
     const report = this.buildReport(now, this.policyReportIntervalSec());
-    const body = this.policy.mode === 'active' ? report : { reports: [report] };
+    return this.policy.mode === 'active' ? report : { type: 'reports', reports: [report] };
+  }
+
+  async sendHttp(now) {
+    if (!this.shouldSend(now)) return;
     try {
       await fetch(`${this.httpBase}/api/clients/report`, {
         method: 'POST',
         headers: this.headers(),
-        body: JSON.stringify(body)
+        body: JSON.stringify(this.reportBody(now))
       });
     } catch {}
+  }
+
+  sendWebSocket(now) {
+    if (!this.shouldSend(now)) return;
+    try { this.ws.send(JSON.stringify(this.reportBody(now))); } catch {}
   }
 
   buildReport(now, intervalSec = this.reportIntervalSec()) {
@@ -164,5 +220,7 @@ export class CFMonitorReporter {
     };
   }
 
-  close() {}
+  close() {
+    if (this.ws) { try { this.ws.close(); } catch {} this.ws = null; }
+  }
 }

@@ -110,6 +110,7 @@ function avgFor(agent, key, count = 90) {
       os: 'Debian 12',
       kernel_version: '6.1.0',
       fake_ip: '154.126.95.20',
+      region: 'KM',
       ram_total: 1024,
       swap_total: 2048,
       disk_total: 100,
@@ -123,26 +124,27 @@ function avgFor(agent, key, count = 90) {
   assert.equal(calls[0].body.mem_total, 1024 * 1048576, 'Komari basic info RAM total must match config');
   assert.equal(calls[0].body.swap_total, 2048 * 1048576, 'Komari basic info swap total must match config');
   assert.equal(calls[0].body.disk_total, 100 * 1048576, 'Komari basic info disk total must match config');
+  assert.equal(calls[0].body.region, String.fromCodePoint(0x1f1f0, 0x1f1f2), 'Komari basic info should send the configured country flag');
 }
 
 {
   const originalFetch = globalThis.fetch;
   const originalWebSocket = globalThis.WebSocket;
-  const originalLog = console.log;
-  globalThis.fetch = async () => ({ ok: true });
-  console.log = () => {};
+  const calls = [];
+  const wsSends = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), method: options.method, body: options.body ? JSON.parse(options.body) : null });
+    return { ok: true };
+  };
   class FakeWebSocket {
     static CONNECTING = 0;
     static OPEN = 1;
     constructor() {
-      this.readyState = 0;
+      this.readyState = 1;
       this.handlers = {};
-      setTimeout(() => {
-        this.readyState = 1;
-        this.handlers.open?.();
-      }, 20);
     }
     addEventListener(name, fn) { this.handlers[name] = fn; }
+    send(body) { wsSends.push(JSON.parse(body)); }
     close() {}
   }
   globalThis.WebSocket = FakeWebSocket;
@@ -154,11 +156,12 @@ function avgFor(agent, key, count = 90) {
       disk_total: 10240
     });
     await reporter.connect();
-    assert.equal(reporter.isOpen(), true, 'Komari connect should resolve after the WebSocket is open');
+    await reporter.send();
+    assert(calls.some(call => call.url === 'https://komari.example/api/clients/report?token=token' && call.method === 'POST'), 'Komari should use HTTP POST reports so Worker cron handoffs keep presence alive');
+    assert.equal(wsSends.length, 0, 'Komari reporter should not depend on a long-lived WebSocket in Worker cron');
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.WebSocket = originalWebSocket;
-    console.log = originalLog;
   }
 }
 
@@ -168,8 +171,29 @@ assert(avg('high', 'disk') > avg('low', 'disk') + 35, 'disk load should differ b
 assert(avg('high', 'down') > avg('low', 'down') * 5, 'network load should differ by profile');
 
 {
+  const originalFetch = globalThis.fetch;
+  const originalWebSocket = globalThis.WebSocket;
+  const sockets = [];
+  const sent = [];
+  globalThis.fetch = async () => ({ ok: true });
+  class FakeWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    constructor(url) {
+      this.url = url;
+      this.readyState = 1;
+      this.handlers = {};
+      sockets.push(this);
+    }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+    send(body) { sent.push(JSON.parse(body)); }
+    close() {}
+  }
+  globalThis.WebSocket = FakeWebSocket;
   const reporter = new CFMonitorReporter({
     name: 'cf-demo',
+    cfmonitor_server: 'https://cf.example',
+    cfmonitor_token: 'cf-token',
     region: 'AE',
     fake_ip: '94.202.159.66',
     report_interval: 3,
@@ -182,14 +206,25 @@ assert(avg('high', 'down') > avg('low', 'down') * 5, 'network load should differ
     arch: 'amd64',
     virtualization: 'kvm'
   });
-  const report = reporter.buildReport(Date.now());
-  assert.equal(report.report_interval, 3, 'CF monitor report should include report_interval for live TTL');
-  assert.equal(reporter.buildReport(Date.now(), 120).report_interval, 120, 'CF monitor idle report should use 120s TTL interval');
-  assert(report.load > 0, 'CF monitor report should include load instead of always reporting 0');
-  assert(report.temp > 0, 'CF monitor report should include realistic temperature instead of always reporting 0');
-  assert.equal(report.ipv4, '94.202.159.66', 'CF monitor report should carry configured fake IPv4');
-  assert.equal(report.basic_info?.ipv4, '94.202.159.66', 'CF monitor report should carry basic_info for metadata sync');
-  assert.notEqual(report.region, 'AE', 'CF monitor region should not be a bare country code that the panel prefers below edge region');
+  try {
+    const report = reporter.buildReport(Date.now());
+    assert.equal(report.report_interval, 3, 'CF monitor report should include report_interval for live TTL');
+    assert.equal(reporter.buildReport(Date.now(), 120).report_interval, 120, 'CF monitor idle report should use 120s TTL interval');
+    assert(report.load > 0, 'CF monitor report should include load instead of always reporting 0');
+    assert(report.temp > 0, 'CF monitor report should include realistic temperature instead of always reporting 0');
+    assert.equal(report.ipv4, '94.202.159.66', 'CF monitor report should carry configured fake IPv4');
+    assert.equal(report.basic_info?.ipv4, '94.202.159.66', 'CF monitor report should carry basic_info for metadata sync');
+    assert.notEqual(report.region, 'AE', 'CF monitor region should not be a bare country code that the panel prefers below edge region');
+
+    await reporter.connect();
+    assert.equal(sockets[0]?.url, 'wss://cf.example/api/clients/report?token=cf-token', 'CF monitor should use Agent WebSocket with query token so active viewer policy can reach vKomari');
+    sockets[0].handlers.message({ data: JSON.stringify({ type: 'policy', mode: 'active', sample_interval_sec: 3, report_interval_sec: 3, report_now: true }) });
+    await reporter.tick();
+    assert.equal(sent[0]?.report_interval, 3, 'active viewer policy should switch CF monitor reports to 3 seconds');
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
+  }
 }
 
 const { parseInstallScript } = await import('../public/js/install.js');
@@ -219,3 +254,4 @@ assert(indexHtml.includes('window.cidrToIp'), 'country IP generation should use 
 const indexJs = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
 assert(!indexJs.includes('setTimeout(resolve, 2000)'), 'Komari cron loop must not add a fixed 2s upload gap before sending');
 assert.match(indexJs, /MAX_DURATION\s*=\s*6[2-9]\d{3}/, 'Komari cron loop should overlap the next minute to hide handoff gaps');
+assert.match(indexJs, /await\s+r\.inst\.send\(\)/, 'cron must await Komari POST reports before the Worker tick ends');
