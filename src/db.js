@@ -1,4 +1,5 @@
 export function getDB(c) {
+  if (!c.env.DB) throw new Error('D1 database not bound. Create a D1 database "vkomari-db" and bind it as "DB" in the Cloudflare Dashboard.');
   return c.env.DB;
 }
 
