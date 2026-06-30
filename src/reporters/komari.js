@@ -6,6 +6,7 @@ export class KomariReporter {
     this.config = config;
     this.agent = new VirtualAgent(config);
     this.ws = null;
+    this.connecting = null;
     this.tick = 0;
     this.infoSent = false;
   }
@@ -47,11 +48,22 @@ export class KomariReporter {
   }
 
   async connect() {
+    if (this.connecting) return this.connecting;
+    this.connecting = this._connect().finally(() => { this.connecting = null; });
+    return this.connecting;
+  }
+
+  async _connect() {
     if (!this.infoSent) await this.uploadBasicInfo();
     if (this.ws) { try { this.ws.close(); } catch {} }
     this.ws = new WebSocket(this.wsUrl);
-    this.ws.addEventListener('open', () => console.log(`[Komari] Connected: ${this.config.name}`));
-    this.ws.addEventListener('error', () => {});
+    await new Promise((resolve) => {
+      let done = false;
+      const finish = () => { if (!done) { done = true; resolve(); } };
+      this.ws.addEventListener('open', () => { console.log(`[Komari] Connected: ${this.config.name}`); finish(); });
+      this.ws.addEventListener('error', finish);
+      setTimeout(finish, 1500);
+    });
   }
 
   isOpen() {

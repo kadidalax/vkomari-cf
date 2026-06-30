@@ -122,6 +122,43 @@ function avgFor(agent, key, count = 90) {
   assert.equal(calls[0].body.disk_total, 100 * 1048576, 'Komari basic info disk total must match config');
 }
 
+{
+  const originalFetch = globalThis.fetch;
+  const originalWebSocket = globalThis.WebSocket;
+  const originalLog = console.log;
+  globalThis.fetch = async () => ({ ok: true });
+  console.log = () => {};
+  class FakeWebSocket {
+    static CONNECTING = 0;
+    static OPEN = 1;
+    constructor() {
+      this.readyState = 0;
+      this.handlers = {};
+      setTimeout(() => {
+        this.readyState = 1;
+        this.handlers.open?.();
+      }, 20);
+    }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+    close() {}
+  }
+  globalThis.WebSocket = FakeWebSocket;
+  try {
+    const reporter = new KomariReporter({
+      komari_server: 'https://komari.example',
+      komari_token: 'token',
+      ram_total: 1024,
+      disk_total: 10240
+    });
+    await reporter.connect();
+    assert.equal(reporter.isOpen(), true, 'Komari connect should resolve after the WebSocket is open');
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
+    console.log = originalLog;
+  }
+}
+
 assert(avg('mid', 'mem') > avg('low', 'mem') + 15, 'mid memory should be clearly above low');
 assert(avg('high', 'mem') > avg('mid', 'mem') + 20, 'high memory should be clearly above mid');
 assert(avg('high', 'disk') > avg('low', 'disk') + 35, 'disk load should differ by profile');
@@ -148,3 +185,7 @@ assert.deepEqual(
 const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 assert.match(indexHtml, /@click="refreshLoad\(\)"/, 'modal random button should refresh load only');
 assert(!indexHtml.includes('randomizeConfig'), 'refresh load must not randomize node hardware, OS, region, IP, or tokens');
+
+const indexJs = readFileSync(new URL('../src/index.js', import.meta.url), 'utf8');
+assert(!indexJs.includes('setTimeout(resolve, 2000)'), 'Komari cron loop must not add a fixed 2s upload gap before sending');
+assert.match(indexJs, /MAX_DURATION\s*=\s*59\d{3}/, 'Komari cron loop should run close to the full minute');
