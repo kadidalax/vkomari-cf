@@ -6,6 +6,8 @@ import { KomariReporter } from '../src/reporters/komari.js';
 import { normalizeNodeData } from '../src/db.js';
 import { cidrToIp } from '../public/js/ip.js';
 
+console.log = () => {};
+
 function avg(profile, key) {
   const agent = new VirtualAgent({
     name: 'same-template-node',

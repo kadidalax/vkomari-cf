@@ -15,6 +15,7 @@ export class CFMonitorReporter {
     this.lastPolicyAt = 0;
     this.lastIdleBucket = -1;
     this.infoSent = false;
+    this.lastSendLogAt = 0;
   }
 
   get httpBase() {
@@ -100,7 +101,7 @@ export class CFMonitorReporter {
 
   async connectWebSocket() {
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
-    this.ws = await openReporterWebSocket(this.wsUrl);
+    this.ws = await openReporterWebSocket(this.wsUrl, this.logName());
     if (!this.ws) return;
     this.ws.addEventListener('message', (event) => {
       try { this.applyPolicy(JSON.parse(event.data)); } catch {}
@@ -177,17 +178,31 @@ export class CFMonitorReporter {
   async sendHttp(now) {
     if (!this.shouldSend(now)) return;
     try {
-      await fetch(`${this.httpBase}/api/clients/report`, {
+      const res = await fetch(`${this.httpBase}/api/clients/report`, {
         method: 'POST',
         headers: this.headers(),
         body: JSON.stringify(this.reportBody(now))
       });
+      this.logSend('http', now, `status=${res.status}`);
     } catch {}
   }
 
   sendWebSocket(now) {
     if (!this.shouldSend(now)) return;
-    try { this.ws.send(JSON.stringify(this.reportBody(now))); } catch {}
+    try {
+      this.ws.send(JSON.stringify(this.reportBody(now)));
+      this.logSend('ws', now);
+    } catch {}
+  }
+
+  logName() {
+    return `cfmonitor ${this.config.name || this.config.client_uuid || ''}`.trim();
+  }
+
+  logSend(kind, now, extra = '') {
+    if (now - this.lastSendLogAt < 30000) return;
+    this.lastSendLogAt = now;
+    console.log(`[vKomari] ${this.logName()} report ${kind} mode=${this.policy.mode} ${extra}`.trim());
   }
 
   buildReport(now, intervalSec = this.reportIntervalSec()) {

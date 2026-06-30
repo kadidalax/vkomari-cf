@@ -17,6 +17,7 @@ export class KomariReporter {
     this.ws = null;
     this.connecting = null;
     this.nextConnectAt = 0;
+    this.lastSendLogAt = 0;
   }
 
   get httpBase() {
@@ -78,7 +79,7 @@ export class KomariReporter {
 
   async connectWebSocket() {
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
-    this.ws = await openReporterWebSocket(this.wsUrl);
+    this.ws = await openReporterWebSocket(this.wsUrl, this.logName());
     if (!this.ws) return;
     this.ws.addEventListener('close', () => { this.ws = null; });
     this.ws.addEventListener('error', () => { this.ws = null; });
@@ -116,7 +117,21 @@ export class KomariReporter {
   async send() {
     await this.connect();
     if (!this.isOpen()) return;
-    try { this.ws.send(JSON.stringify(this.buildReport())); } catch {}
+    try {
+      this.ws.send(JSON.stringify(this.buildReport()));
+      this.logSend();
+    } catch {}
+  }
+
+  logName() {
+    return `komari ${this.config.name || this.config.client_uuid || ''}`.trim();
+  }
+
+  logSend() {
+    const now = Date.now();
+    if (now - this.lastSendLogAt < 30000) return;
+    this.lastSendLogAt = now;
+    console.log(`[vKomari] ${this.logName()} report ws`);
   }
 
   close() {
