@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { VirtualAgent } from '../src/agent.js';
 import { CFMonitorReporter } from '../src/reporters/cfmonitor.js';
 import { KomariReporter } from '../src/reporters/komari.js';
@@ -35,6 +36,59 @@ assert.equal(normalized.cpu_min, 61.1, 'CPU min/max should be sorted before save
 assert.equal(normalized.cpu_max, 100, 'CPU min/max should be sorted before save');
 assert.equal(normalized.disk_min, 30.8, 'disk min/max should be sorted before save');
 assert.equal(normalized.disk_max, 31.1, 'disk min/max should be sorted before save');
+
+const zeroRangeAgent = new VirtualAgent({
+  name: 'zero-range-node',
+  load_profile: 'high',
+  ram_total: 1024,
+  swap_total: 512,
+  disk_total: 10240,
+  cpu_min: 0,
+  cpu_max: 1,
+  mem_min: 0,
+  mem_max: 10,
+  swap_min: 0,
+  swap_max: 1,
+  disk_min: 0,
+  disk_max: 10
+});
+for (let i = 0; i < 20; i++) {
+  const s = zeroRangeAgent.generateStats(i);
+  assert(s.cpu >= 0 && s.cpu <= 100, 'CPU must stay in valid percent bounds');
+  assert(s.mem >= 0 && s.mem <= 100, 'memory must stay in valid percent bounds');
+  assert(s.swap >= 0 && s.swap <= 100, 'swap must stay in valid percent bounds');
+  assert(s.disk >= 0 && s.disk <= 100, 'disk must stay in valid percent bounds');
+}
+assert(avgFor(zeroRangeAgent, 'cpu') < 12, 'explicit CPU 0-1 soft range must not fall back to high profile defaults');
+assert(avgFor(zeroRangeAgent, 'mem') < 18, 'explicit memory 0-10 soft range must not fall back to high profile defaults');
+
+const demoCpuAgent = new VirtualAgent({
+  name: 'demo-spike-node',
+  client_uuid: '22222222-2222-4222-8222-222222222222',
+  ram_total: 2048,
+  swap_total: 512,
+  disk_total: 20480,
+  load_profile: 'high',
+  cpu_min: 5,
+  cpu_max: 95
+});
+const demoCpu = Array.from({ length: 180 }, (_, i) => demoCpuAgent.generateStats(i).cpu);
+assert(Math.max(...demoCpu) - Math.min(...demoCpu) > 25, 'demo CPU should have frequent large swings');
+
+const uptimeAgent = new VirtualAgent({
+  name: 'moving-uptime-node',
+  ram_total: 1024,
+  disk_total: 10240,
+  uptime_base: 86400,
+  created_at: new Date(Date.now() - 600000).toISOString()
+});
+assert(uptimeAgent.generateStats(0).uptime >= 86900, 'uptime should continue from uptime_base when boot_time is absent');
+
+function avgFor(agent, key, count = 90) {
+  let total = 0;
+  for (let i = 0; i < count; i++) total += agent.generateStats(i)[key];
+  return total / count;
+}
 
 {
   const calls = [];
@@ -90,3 +144,7 @@ assert.deepEqual(
     uuid: '4d0ec364-38a3-42b3-acc9-24bf38b702f6'
   }
 );
+
+const indexHtml = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+assert.match(indexHtml, /@click="refreshLoad\(\)"/, 'modal random button should refresh load only');
+assert(!indexHtml.includes('randomizeConfig'), 'refresh load must not randomize node hardware, OS, region, IP, or tokens');

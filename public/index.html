@@ -200,6 +200,10 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
             </div>
           </div>
         </div>
+        <button @click="refreshLoad()" type="button" class="text-xs bg-zinc-800 hover:bg-zinc-700 border border-white/5 px-3 py-1.5 rounded-lg text-zinc-300 transition flex items-center gap-2" title="只刷新负载区间，不改变节点配置">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v6h6M20 20v-6h-6M5 19A9 9 0 0 0 19 5M19 5h-5M5 19h5"/></svg>
+          刷新负载
+        </button>
       </div>
       <button @click="showModal=false" class="text-zinc-400 hover:text-white p-1.5 rounded-lg hover:bg-zinc-700 transition"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
     </div>
@@ -379,9 +383,14 @@ function app(){return{
   async batchAction(a){try{await API.batchNodes(a);await this.loadNodes();this.notify(a==='start'?'已全部启动':'已全部停止','success')}catch(e){this.notify('操作失败: '+e.message,'error')}},
   async deleteNode(id){const ok=await this.showConfirm('删除节点','确定删除此节点？','danger','删除');if(!ok)return;try{await API.deleteNode(id);await this.loadNodes();this.notify('节点已删除','success')}catch(e){this.notify('删除失败: '+e.message,'error')}},
 
-  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',report_interval:1,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.applyPreset();this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
+  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',report_interval:1,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.refreshLoad(false);this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
 
   editNode(n){this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.form.boot_date=n.boot_time?new Date(n.boot_time*1000).toISOString().slice(0,10):'';this.initUnits();this.showModal=true},
+
+  refreshLoad(showToast=true){
+    this.applyPreset();
+    if(showToast)this.notify('负载区间已刷新','success')
+  },
 
   applyPreset(){
     const p=this.dd.loadPresets[this.form.load_profile];if(!p)return;
@@ -421,6 +430,7 @@ function app(){return{
     const keep={id:this.form.id,name:this.form.name,client_uuid:this.form.client_uuid,komari_server:this.form.komari_server,komari_token:this.form.komari_token,cfmonitor_server:this.form.cfmonitor_server,cfmonitor_token:this.form.cfmonitor_token};
     this.form={...this.form,...t.config,...keep,report_enabled:!!t.config.report_enabled};
     if(!this.form.kernel_version)this.form.kernel_version=this.getKernels(this.form.os)[0]||'';
+    this.refreshLoad(false);
     if(this.form.region)this.generateIpForRegion(this.form.region);
     this.initUnits();
     this.notify('已应用模板: '+t.name,'success')
