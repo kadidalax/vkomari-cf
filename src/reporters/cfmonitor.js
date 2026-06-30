@@ -1,5 +1,6 @@
 // CF-VPS-Monitor reporter: Agent WebSocket policy mode, HTTP idle fallback.
 import { VirtualAgent } from '../agent.js';
+import { openReporterWebSocket } from './ws.js';
 
 export class CFMonitorReporter {
   constructor(config) {
@@ -98,9 +99,9 @@ export class CFMonitorReporter {
   }
 
   async connectWebSocket() {
-    if (typeof WebSocket === 'undefined') return;
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
-    this.ws = new WebSocket(this.wsUrl);
+    this.ws = await openReporterWebSocket(this.wsUrl);
+    if (!this.ws) return;
     this.ws.addEventListener('message', (event) => {
       try { this.applyPolicy(JSON.parse(event.data)); } catch {}
     });

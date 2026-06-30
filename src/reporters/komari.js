@@ -1,5 +1,6 @@
 // Komari panel reporter: HTTP POST, sends every 1 second.
 import { VirtualAgent } from '../agent.js';
+import { openReporterWebSocket } from './ws.js';
 
 function countryFlag(region) {
   const code = String(region || '').trim().toUpperCase();
@@ -76,9 +77,9 @@ export class KomariReporter {
   }
 
   async connectWebSocket() {
-    if (typeof WebSocket === 'undefined') return;
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
-    this.ws = new WebSocket(this.wsUrl);
+    this.ws = await openReporterWebSocket(this.wsUrl);
+    if (!this.ws) return;
     this.ws.addEventListener('close', () => { this.ws = null; });
     this.ws.addEventListener('error', () => { this.ws = null; });
     await new Promise((resolve) => {

@@ -163,7 +163,7 @@ function avgFor(agent, key, count = 90) {
     assert(calls.some(call => call.url === 'https://komari.example/api/clients/uploadBasicInfo?token=token' && call.method === 'POST'), 'Komari should still upload basic info over HTTP');
     assert.equal(sockets[0]?.url, 'wss://komari.example/api/clients/report?token=token', 'Komari reports should use WebSocket to avoid Worker subrequest limits');
     assert.equal(wsSends.length, 1, 'Komari reporter should send live report over WebSocket');
-    assert(!calls.some(call => call.url === 'https://komari.example/api/clients/report?token=token'), 'Komari must not spend one HTTP subrequest per second');
+    assert(!calls.some(call => call.url === 'https://komari.example/api/clients/report?token=token' && call.method === 'POST'), 'Komari must not spend one HTTP subrequest per second');
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.WebSocket = originalWebSocket;
@@ -226,6 +226,46 @@ assert(avg('high', 'down') > avg('low', 'down') * 5, 'network load should differ
     sockets[0].handlers.message({ data: JSON.stringify({ type: 'policy', mode: 'active', sample_interval_sec: 3, report_interval_sec: 3, report_now: true }) });
     await reporter.tick();
     assert.equal(sent[0]?.report_interval, 3, 'active viewer policy should switch CF monitor reports to 3 seconds');
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
+  }
+}
+
+{
+  const originalFetch = globalThis.fetch;
+  const originalWebSocket = globalThis.WebSocket;
+  const upgradeCalls = [];
+  const ws = {
+    readyState: 1,
+    accepted: false,
+    handlers: {},
+    accept() { this.accepted = true; },
+    addEventListener(name, fn) { this.handlers[name] = fn; },
+    send() {},
+    close() {}
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    if (String(url).includes('/api/clients/report')) {
+      upgradeCalls.push({ url: String(url), upgrade: options.headers?.Upgrade || options.headers?.upgrade });
+      return { webSocket: ws };
+    }
+    return { ok: true };
+  };
+  globalThis.WebSocket = class {
+    constructor() { throw new Error('fetch Upgrade websocket should be used in Workers'); }
+  };
+  try {
+    const reporter = new CFMonitorReporter({
+      cfmonitor_server: 'https://cf.example',
+      cfmonitor_token: 'cf-token',
+      ram_total: 1024,
+      disk_total: 10240
+    });
+    await reporter.connect();
+    assert.equal(upgradeCalls[0]?.url, 'https://cf.example/api/clients/report?token=cf-token', 'CF monitor should use fetch websocket upgrade URL');
+    assert.equal(upgradeCalls[0]?.upgrade, 'websocket', 'CF monitor websocket upgrade should send Upgrade header');
+    assert.equal(ws.accepted, true, 'Worker client websocket must be accepted before use');
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.WebSocket = originalWebSocket;
