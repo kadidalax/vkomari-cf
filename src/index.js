@@ -73,7 +73,9 @@ async function runCron(env, ctx) {
   }
 
   // Connect all reporters
-  for (const r of reporters) r.inst.connect();
+  for (const r of reporters) {
+    try { await r.inst.connect(); } catch (err) { console.error(`[vKomari] connect failed: ${r.type}`, err); }
+  }
   await new Promise(resolve => setTimeout(resolve, 2000));
 
   // ponytail: run for ~55s to stay within Worker limits (30s CPU + WS idle budget)
@@ -83,10 +85,11 @@ async function runCron(env, ctx) {
   while (Date.now() - start < MAX_DURATION) {
     const loopStart = Date.now();
     for (const r of reporters) {
-      if (r.type === 'komari') {
-        r.inst.send();
-      } else {
-        r.inst.tick();
+      try {
+        if (r.type === 'komari') r.inst.send();
+        else await r.inst.tick();
+      } catch (err) {
+        console.error(`[vKomari] reporter failed: ${r.type}`, err);
       }
     }
     const elapsed = Date.now() - loopStart;

@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "echo Build-ready: static assets in public/",
+    "test": "node test/selfcheck.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "d1:init": "wrangler d1 execute vkomari-db --file=./schema.sql"
+    "d1:init": "wrangler d1 execute vkomari-db --file=./migrations/0001_schema.sql"
   },
   "dependencies": {
     "hono": "^4.7.0"

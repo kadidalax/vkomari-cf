@@ -7,6 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script src="js/data.js"></script>
+  <script type="module" src="js/install.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
   <script src="js/api.js"></script>
   <style>[x-cloak]{display:none!important}
@@ -46,9 +47,9 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
 </div>
 
 <!-- Main -->
-<div x-show="token" class="min-h-screen">
+<div x-show="token" class="min-h-screen flex flex-col">
   <header class="bg-zinc-800/90 backdrop-blur border-b border-zinc-700 sticky top-0 z-30 px-4 py-3">
-    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+    <div class="w-[90vw] max-w-none mx-auto flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 bg-violet-500/20 rounded-lg flex items-center justify-center text-violet-400 font-bold">V</div>
         <h1 class="text-xl font-bold">vKomari-CF</h1>
@@ -71,11 +72,14 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto p-4 sm:p-6">
+  <main class="w-[90vw] max-w-none mx-auto p-4 sm:p-6 flex-1 flex flex-col">
     <!-- Search & Filter -->
-    <div class="flex flex-wrap gap-4 mb-6">
-      <div class="flex-1 min-w-[200px]">
-        <input type="text" x-model="searchQuery" placeholder="搜索节点名称、地址、分组..." autocomplete="off"
+    <div class="flex flex-wrap items-center gap-3 mb-6">
+      <button @click="searchOpen=!searchOpen;$nextTick(()=>searchOpen&&$refs.nodeSearch?.focus())" class="w-11 h-11 bg-zinc-800 border border-zinc-700 hover:border-violet-500 rounded-lg flex items-center justify-center text-zinc-300 transition" title="搜索节点">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m21 21-4.35-4.35M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15z"/></svg>
+      </button>
+      <div x-show="searchOpen" x-transition class="flex-1 min-w-[220px]">
+        <input x-ref="nodeSearch" type="text" x-model="searchQuery" placeholder="搜索节点名称、地址、分组..." autocomplete="off"
           class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500 transition">
       </div>
       <select x-model="activeGroup" class="bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-violet-500">
@@ -123,7 +127,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
               </div>
               <!-- Card Stats -->
               <div class="px-3 py-2 flex-1 space-y-0.5">
-                <div class="stat-row"><span class="stat-l">配置</span><span class="text-xs font-mono text-violet-400" x-text="(n.cpu_cores||2)+'C / '+(n.ram_total||1024)+'MB'"></span></div>
+                <div class="stat-row"><span class="stat-l">配置</span><span class="text-xs font-mono text-violet-400" x-text="(n.cpu_cores||2)+'C / '+formatMB(n.ram_total||1024)"></span></div>
                 <div class="stat-row"><span class="stat-l">系统</span><span class="text-[11px] text-zinc-300 truncate max-w-[120px]" x-text="n.os||'Linux'"></span></div>
                 <div class="stat-row" x-show="n.group_name"><span class="stat-l">分组</span><span class="text-[10px] text-zinc-400 px-1.5 py-0.5 bg-zinc-800/80 rounded border border-zinc-700/50" x-text="n.group_name"></span></div>
                 <div class="stat-row"><span class="stat-l">面板</span>
@@ -133,7 +137,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
                     <span x-show="n.report_enabled" class="text-green-400 text-[9px]">📡</span>
                   </span>
                 </div>
-                <div class="stat-row"><span class="stat-l">硬盘</span><span class="text-[11px] font-mono text-zinc-400" x-text="(n.disk_total||10)+'GB'"></span></div>
+                <div class="stat-row"><span class="stat-l">硬盘</span><span class="text-[11px] font-mono text-zinc-400" x-text="formatMB(n.disk_total||10240)"></span></div>
               </div>
               <!-- Card Footer -->
               <div class="px-3 py-2 bg-zinc-900/40 border-t border-white/5 flex gap-2">
@@ -153,7 +157,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
     </div>
 
     <!-- Footer -->
-    <footer class="mt-12 pb-8 text-center space-y-4">
+    <footer class="mt-auto pt-12 pb-8 text-center space-y-4">
       <a href="https://github.com/kadidalax/vkomari-cf" target="_blank" class="text-zinc-500 hover:text-violet-400 transition inline-flex items-center gap-2 text-sm font-medium group">
         <div class="bg-zinc-800 p-2 rounded-full group-hover:bg-zinc-700 transition"><svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .32.21.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></div>
         <span>GitHub</span>
@@ -206,21 +210,22 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>基础信息</h3>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="text-[10px] text-zinc-500 uppercase">名称</label><input x-model="form.name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">分组</label><input x-model="form.group_name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="香港集群"></div>
           <div><label class="text-[10px] text-zinc-500 uppercase">地区</label>
             <div class="relative mt-1" x-data="{open:false}">
               <div @click="open=!open" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center gap-2"><span x-text="getFlag(form.region)"></span><span x-text="form.region||'CN'"></span></div>
               <div x-show="open" @click.away="open=false" class="absolute z-30 w-full mt-1 bg-zinc-900 glass rounded-lg max-h-48 overflow-y-auto cs">
                 <input type="text" x-model="countrySearch" placeholder="搜索..." class="w-full bg-zinc-800 border-b border-zinc-700 px-3 py-2 text-xs focus:outline-none sticky top-0">
-                <template x-for="c in dd.countries.filter(x=>countrySearch?x.name.toLowerCase().includes(countrySearch.toLowerCase())||x.code.toLowerCase().includes(countrySearch.toLowerCase()):true)"><div @click="form.region=c.code;open=false" class="px-3 py-1.5 text-xs hover:bg-white/5 cursor-pointer flex items-center gap-2"><span x-text="c.flag"></span><span x-text="c.name+' ('+c.code+')'"></span></div></template>
+                <template x-for="c in dd.countries.filter(x=>countrySearch?x.name.toLowerCase().includes(countrySearch.toLowerCase())||x.code.toLowerCase().includes(countrySearch.toLowerCase()):true)"><div @click="form.region=c.code;countrySearch='';generateIpForRegion(c.code);open=false" class="px-3 py-1.5 text-xs hover:bg-white/5 cursor-pointer flex items-center gap-2"><span x-text="c.flag"></span><span x-text="c.name+' ('+c.code+')'"></span></div></template>
               </div>
             </div>
           </div>
           <div><label class="text-[10px] text-zinc-500 uppercase">OS</label><select x-model="form.os" @change="onOsChange()" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="o in dd.os"><option :value="o.value" x-text="o.label"></option></template></select></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">架构</label><select x-model="form.arch" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="amd64">amd64</option><option value="arm64">arm64</option><option value="i386">i386</option></select></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">虚拟化</label><select x-model="form.virtualization" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="kvm">KVM</option><option value="openvz">OpenVZ</option><option value="lxc">LXC</option><option value="docker">Docker</option><option value="vmware">VMware</option><option value="hyperv">Hyper-V</option><option value="xen">Xen</option><option value="bhyve">Bhyve</option></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">架构</label><select x-model="form.arch" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="a in dd.arch"><option :value="a.value" x-text="a.label"></option></template></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">虚拟化</label><select x-model="form.virtualization" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="v in dd.virtualization"><option :value="v.value" x-text="v.label"></option></template></select></div>
           <div><label class="text-[10px] text-zinc-500 uppercase">内核版本</label><select x-model="form.kernel_version" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="k in getKernels(form.os)"><option :value="k" x-text="k"></option></template></select></div>
           <div><label class="text-[10px] text-zinc-500 uppercase">伪造IP</label><input x-model="form.fake_ip" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="203.0.113.5"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">CPU型号</label><input x-model="form.cpu_model" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">CPU型号</label><select x-model="form.cpu_model" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="cpu in dd.cpuModels"><option :value="cpu.value" x-text="cpu.label"></option></template></select></div>
         </div>
       </div>
       <!-- Section: Hardware -->
@@ -228,11 +233,13 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>硬件配置</h3>
         <div class="grid grid-cols-3 gap-3">
           <div><label class="text-[10px] text-zinc-500 uppercase">CPU核心</label><input type="number" x-model="form.cpu_cores" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">内存(MB)</label><input type="number" x-model="form.ram_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">Swap(MB)</label><input type="number" x-model="form.swap_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">硬盘(GB)</label><input type="number" x-model="form.disk_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">负载模式</label><select x-model="form.load_profile" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="low">低负载</option><option value="mid">中等</option><option value="high">高负载</option></select></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">GPU型号</label><input x-model="form.gpu_name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="NVIDIA A100"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">内存</label><div class="flex mt-1"><input type="number" x-model.number="form.ram_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-l-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"><button @click="toggleUnit('ram')" class="bg-zinc-700 border-y border-r border-zinc-600 px-2 text-xs rounded-r-lg hover:bg-zinc-600 transition" x-text="form.ram_unit"></button></div></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">Swap</label><div class="flex mt-1"><input type="number" x-model.number="form.swap_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-l-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"><button @click="toggleUnit('swap')" class="bg-zinc-700 border-y border-r border-zinc-600 px-2 text-xs rounded-r-lg hover:bg-zinc-600 transition" x-text="form.swap_unit"></button></div></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">硬盘</label><div class="flex mt-1"><input type="number" x-model.number="form.disk_total" class="w-full bg-zinc-800 border border-zinc-700 rounded-l-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"><button @click="toggleUnit('disk')" class="bg-zinc-700 border-y border-r border-zinc-600 px-2 text-xs rounded-r-lg hover:bg-zinc-600 transition" x-text="form.disk_unit"></button></div></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">负载模式</label><select x-model="form.load_profile" @change="applyPreset()" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="low">低负载</option><option value="mid">中等</option><option value="high">高负载</option></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">GPU型号</label><select x-model="form.gpu_name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><template x-for="gpu in dd.gpuModels"><option :value="gpu.value" x-text="gpu.label"></option></template></select></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">开机日期</label><input type="date" x-model="form.boot_date" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">月流量重置日</label><input type="number" x-model="form.traffic_reset_day" min="1" max="28" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
         </div>
       </div>
       <!-- Section: Simulation Range -->
@@ -241,16 +248,25 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         <div class="grid grid-cols-3 gap-3">
           <div><label class="text-[10px] text-zinc-500 uppercase">CPU最低%</label><input type="number" x-model="form.cpu_min" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
           <div><label class="text-[10px] text-zinc-500 uppercase">CPU最高%</label><input type="number" x-model="form.cpu_max" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">网速最低 B/s</label><input type="number" x-model="form.net_min" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">网速最高 B/s</label><input type="number" x-model="form.net_max" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
           <div><label class="text-[10px] text-zinc-500 uppercase">内存最低%</label><input type="number" x-model="form.mem_min" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
           <div><label class="text-[10px] text-zinc-500 uppercase">内存最高%</label><input type="number" x-model="form.mem_max" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">Swap最低%</label><input type="number" x-model="form.swap_min" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">Swap最高%</label><input type="number" x-model="form.swap_max" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">磁盘最低%</label><input type="number" x-model="form.disk_min" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">磁盘最高%</label><input type="number" x-model="form.disk_max" step="0.1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">网速最低</label><div class="flex mt-1"><input type="number" x-model.number="form.net_min" class="w-full bg-zinc-800 border border-zinc-700 rounded-l-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"><button @click="toggleUnit('net')" class="bg-zinc-700 border-y border-r border-zinc-600 px-2 text-xs rounded-r-lg hover:bg-zinc-600 transition" x-text="form.net_unit"></button></div></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">网速最高</label><div class="flex mt-1"><input type="number" x-model.number="form.net_max" class="w-full bg-zinc-800 border border-zinc-700 rounded-l-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"><button @click="toggleUnit('net')" class="bg-zinc-700 border-y border-r border-zinc-600 px-2 text-xs rounded-r-lg hover:bg-zinc-600 transition" x-text="form.net_unit"></button></div></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">连接最低</label><input type="number" x-model="form.conn_min" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">连接最高</label><input type="number" x-model="form.conn_max" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">进程最低</label><input type="number" x-model="form.proc_min" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">进程最高</label><input type="number" x-model="form.proc_max" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">上报间隔(秒)</label><input type="number" x-model="form.report_interval" min="1" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
         </div>
       </div>
       <!-- Section: One-Key Parse -->
       <div>
         <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>一键解析安装脚本</h3>
-        <textarea x-model="installScript" placeholder="粘贴 Komari 或 CF-VPS-Monitor 的安装命令..." class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono focus:border-violet-500 focus:outline-none h-16"></textarea>
+        <textarea x-model="installScript" @paste="setTimeout(()=>parseScript(),100)" placeholder="粘贴 Komari 或 CF-VPS-Monitor 的安装命令..." class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono focus:border-violet-500 focus:outline-none h-16"></textarea>
         <div class="flex gap-2 mt-2"><button @click="parseScript()" class="bg-zinc-700 hover:bg-zinc-600 text-xs px-3 py-1 rounded transition">🔍 解析</button><span class="text-xs text-zinc-500 mt-1" x-text="parseResult"></span></div>
       </div>
       <!-- Section: Panel Targets -->
@@ -317,7 +333,7 @@ function app(){return{
   loginForm:{username:'admin',password:''},loginError:'',
   nodes:[],showModal:false,showPwdModal:false,isDefaultPwd:false,newPassword:'',
   form:{},countrySearch:'',installScript:'',parseResult:'',
-  toasts:[],searchQuery:'',activeGroup:'',newTemplateName:'',
+  toasts:[],searchQuery:'',searchOpen:false,activeGroup:'',newTemplateName:'',
   collapsedGroups:{},templates:[],
   confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
   showRenameModal:false,renameForm:{oldName:'',newName:''},
@@ -363,17 +379,26 @@ function app(){return{
   async batchAction(a){try{await API.batchNodes(a);await this.loadNodes();this.notify(a==='start'?'已全部启动':'已全部停止','success')}catch(e){this.notify('操作失败: '+e.message,'error')}},
   async deleteNode(id){const ok=await this.showConfirm('删除节点','确定删除此节点？','danger','删除');if(!ok)return;try{await API.deleteNode(id);await this.loadNodes();this.notify('节点已删除','success')}catch(e){this.notify('删除失败: '+e.message,'error')}},
 
-  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel Xeon',cpu_cores:2,ram_total:1024,swap_total:0,disk_total:10,load_profile:'mid',cpu_min:5,cpu_max:85,mem_min:15,mem_max:85,swap_min:0,swap_max:5,disk_min:30,disk_max:80,net_min:102400,net_max:10485760,conn_min:10,conn_max:200,proc_min:50,proc_max:300,fake_ip:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.parseResult='';this.installScript='';this.showModal=true},
+  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',report_interval:1,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.applyPreset();this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
 
-  editNode(n){this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.showModal=true},
+  editNode(n){this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.form.boot_date=n.boot_time?new Date(n.boot_time*1000).toISOString().slice(0,10):'';this.initUnits();this.showModal=true},
+
+  applyPreset(){
+    const p=this.dd.loadPresets[this.form.load_profile];if(!p)return;
+    const fuzz=(v,r)=>Math.max(0,Math.round((v+(Math.random()*2-1)*r)*10)/10);
+    [['cpu_min','cpu_max'],['mem_min','mem_max'],['swap_min','swap_max'],['disk_min','disk_max']].forEach(([a,b])=>{let lo=fuzz(p[a],5),hi=fuzz(p[b],5);if(lo>hi)[lo,hi]=[hi,lo];this.form[a]=lo;this.form[b]=hi});
+    [['conn_min','conn_max'],['proc_min','proc_max'],['net_min','net_max']].forEach(([a,b])=>{let lo=fuzz(p[a],p[a]*0.2),hi=fuzz(p[b],p[b]*0.2);if(lo>hi)[lo,hi]=[hi,lo];this.form[a]=Math.round(lo);this.form[b]=Math.round(hi)});
+    this.form.net_unit='Bytes';
+  },
 
   async saveNode(){
-    const f=this.form;
+    const f=this.normalizedForm();
+    const bootTime=f.boot_date?Math.floor(new Date(f.boot_date+'T00:00:00').getTime()/1000):(f.boot_time||0);
     const data={...f,
       name:f.name||'VPS-'+Math.floor(Math.random()*1000),
       report_enabled:f.report_enabled?1:0,enabled:f.enabled?1:0,
-      report_interval:3,traffic_reset_day:1,
-      boot_time:f.boot_time||0,uptime_base:f.uptime_base||86400,
+      report_interval:Number(f.report_interval)||1,traffic_reset_day:Number(f.traffic_reset_day)||1,
+      boot_time:bootTime,uptime_base:bootTime?Math.max(0,Math.floor(Date.now()/1000)-bootTime):(f.uptime_base||86400),
       client_uuid:f.client_uuid||crypto.randomUUID(),
       sort_order:f.sort_order||0,group_name:f.group_name||''
     };
@@ -387,15 +412,17 @@ function app(){return{
   },
 
   async saveAsTemplate(){
-    const f=this.form;const name=this.newTemplateName||prompt('模板名称:');if(!name)return;
-    const cfg={os:f.os,arch:f.arch,virtualization:f.virtualization,region:f.region,cpu_model:f.cpu_model,cpu_cores:f.cpu_cores,ram_total:f.ram_total,swap_total:f.swap_total,disk_total:f.disk_total,load_profile:f.load_profile,cpu_min:f.cpu_min,cpu_max:f.cpu_max,mem_min:f.mem_min,mem_max:f.mem_max,net_min:f.net_min,net_max:f.net_max,report_enabled:f.report_enabled?1:0};
+    const f=this.normalizedForm();const name=this.newTemplateName||prompt('模板名称:');if(!name)return;
+    const cfg={os:f.os,arch:f.arch,virtualization:f.virtualization,region:f.region,cpu_model:f.cpu_model,gpu_name:f.gpu_name,kernel_version:f.kernel_version,cpu_cores:f.cpu_cores,ram_total:f.ram_total,swap_total:f.swap_total,disk_total:f.disk_total,load_profile:f.load_profile,cpu_min:f.cpu_min,cpu_max:f.cpu_max,mem_min:f.mem_min,mem_max:f.mem_max,swap_min:f.swap_min,swap_max:f.swap_max,disk_min:f.disk_min,disk_max:f.disk_max,net_min:f.net_min,net_max:f.net_max,conn_min:f.conn_min,conn_max:f.conn_max,proc_min:f.proc_min,proc_max:f.proc_max,report_interval:f.report_interval,traffic_reset_day:f.traffic_reset_day,report_enabled:f.report_enabled?1:0};
     try{await API.saveTemplate(name,cfg);this.newTemplateName='';await this.loadTemplates();this.notify('模板已保存','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
   },
 
   applyTemplate(t){
-    const c=t.config;
-    this.form={...this.form,os:c.os||this.form.os,arch:c.arch||this.form.arch,virtualization:c.virtualization||this.form.virtualization,region:c.region||this.form.region,cpu_model:c.cpu_model||this.form.cpu_model,cpu_cores:c.cpu_cores||this.form.cpu_cores,ram_total:c.ram_total||this.form.ram_total,swap_total:c.swap_total||this.form.swap_total,disk_total:c.disk_total||this.form.disk_total,load_profile:c.load_profile||this.form.load_profile,cpu_min:c.cpu_min||this.form.cpu_min,cpu_max:c.cpu_max||this.form.cpu_max,mem_min:c.mem_min||this.form.mem_min,mem_max:c.mem_max||this.form.mem_max,net_min:c.net_min||this.form.net_min,net_max:c.net_max||this.form.net_max,report_enabled:!!c.report_enabled};
-    this.form.kernel_version=this.getKernels(this.form.os)[0]||'';
+    const keep={id:this.form.id,name:this.form.name,client_uuid:this.form.client_uuid,komari_server:this.form.komari_server,komari_token:this.form.komari_token,cfmonitor_server:this.form.cfmonitor_server,cfmonitor_token:this.form.cfmonitor_token};
+    this.form={...this.form,...t.config,...keep,report_enabled:!!t.config.report_enabled};
+    if(!this.form.kernel_version)this.form.kernel_version=this.getKernels(this.form.os)[0]||'';
+    if(this.form.region)this.generateIpForRegion(this.form.region);
+    this.initUnits();
     this.notify('已应用模板: '+t.name,'success')
   },
 
@@ -403,16 +430,10 @@ function app(){return{
 
   parseScript(){
     const s=this.installScript.trim();if(!s){this.parseResult='请粘贴安装脚本';return}
-    let server='',token='',name='',uuid='',pt='';
-    const km=s.match(/-e\s+['"]?(\S+?)['"]?(?:\s|$)/);if(km){server=km[1];pt='komari'}
-    const cms=s.match(/-s\s+['"]?(\S+?)['"]?(?:\s|$)/);if(cms){server=cms[1];pt='cfmonitor'}
-    const tm=s.match(/-t\s+['"]?(\S+?)['"]?(?:\s|$)/);if(tm)token=tm[1]
-    const nm=s.match(/-n\s+['"]?(\S+?)['"]?(?:\s|$)/);if(nm)name=nm[1]
-    const um=s.match(/-i\s+['"]?(\S+?)['"]?(?:\s|$)/);if(um)uuid=um[1]
-    if(!pt){if(server.includes('komari'))pt='komari';else if(server.includes('cf')||server.includes('monitor'))pt='cfmonitor'}
-    if(!server||!token){this.parseResult='❌ 无法解析，请检查脚本格式';return}
-    if(pt==='komari'){this.form.komari_server=server;this.form.komari_token=token;this.parseResult='✅ 已填入 Komari 面板'}else{this.form.cfmonitor_server=server;this.form.cfmonitor_token=token;this.parseResult='✅ 已填入 CF-VPS-Monitor 面板'}
-    if(name)this.form.name=name
+    const r=window.parseInstallScript?.(s);
+    if(!r){this.parseResult='❌ 无法解析，请检查脚本格式';return}
+    if(r.panel==='komari'){this.form.komari_server=r.server;this.form.komari_token=r.token;this.parseResult='✅ 已填入 Komari 面板'}else{this.form.cfmonitor_server=r.server;this.form.cfmonitor_token=r.token;this.form.client_uuid=r.uuid||this.form.client_uuid;this.parseResult='✅ 已填入 CF-VPS-Monitor 面板'}
+    if(r.name)this.form.name=r.name
   },
 
   showRename(g){this.renameForm={oldName:g,newName:g};this.showRenameModal=true},
@@ -431,6 +452,54 @@ function app(){return{
     const ok=await this.showConfirm('导入节点','确定导入 '+nodes.length+' 个节点？','info','导入');if(!ok)return;
     await API.importNodes(nodes);await this.loadNodes();this.notify('成功导入 '+nodes.length+' 个节点','success');
     e.target.value=''}catch(e){this.notify('导入失败: '+e.message,'error');e.target.value=''}
+  },
+
+  generateIpForRegion(code){
+    const cidr=this.dd.ipRanges[code];
+    if(cidr)this.form.fake_ip=this.cidrToIp(cidr);
+  },
+
+  cidrToIp(cidr){
+    const [range,maskText]=cidr.split('/');
+    const mask=Number(maskText);
+    const parts=range.split('.').map(Number);
+    const ip=(((parts[0]*256+parts[1])*256+parts[2])*256+parts[3])>>>0;
+    const size=2**(32-mask);
+    const network=Math.floor(ip/size)*size;
+    const offset=size<=2?0:1+Math.floor(Math.random()*(size-2));
+    const final=network+offset;
+    return [final>>>24,(final>>>16)&255,(final>>>8)&255,final&255].join('.');
+  },
+
+  formatMB(v){v=Number(v)||0;return v>=1024&&v%1024===0?(v/1024)+'GB':v+'MB'},
+
+  toggleUnit(kind){
+    const unit=kind+'_unit',field=kind+'_total';
+    if(kind==='net'){
+      const scale=(m)=>{this.form.net_min=Math.round((Number(this.form.net_min)||0)*m);this.form.net_max=Math.round((Number(this.form.net_max)||0)*m)};
+      if(this.form.net_unit==='Bytes'){scale(1/1024);this.form.net_unit='KB'}else if(this.form.net_unit==='KB'){scale(1/1024);this.form.net_unit='MB'}else{scale(1048576);this.form.net_unit='Bytes'}
+      return;
+    }
+    if(this.form[unit]==='GB'){this.form[field]=Math.round((Number(this.form[field])||0)*1024);this.form[unit]='MB'}else{this.form[field]=Math.round((Number(this.form[field])||0)/1024*100)/100;this.form[unit]='GB'}
+  },
+
+  initUnits(){
+    ['ram','swap','disk'].forEach(k=>{const f=k+'_total',u=k+'_unit',v=Number(this.form[f])||0;this.form[u]='MB';if(v>=1024&&v%1024===0){this.form[f]=v/1024;this.form[u]='GB'}});
+    this.form.net_unit='Bytes';
+    const min=Number(this.form.net_min)||0,max=Number(this.form.net_max)||0;
+    if(min>=1048576&&min%1048576===0&&max%1048576===0){this.form.net_min=min/1048576;this.form.net_max=max/1048576;this.form.net_unit='MB'}
+    else if(min>=1024&&min%1024===0&&max%1024===0){this.form.net_min=min/1024;this.form.net_max=max/1024;this.form.net_unit='KB'}
+  },
+
+  normalizedForm(){
+    const p={...this.form};
+    if(p.ram_unit==='GB')p.ram_total=Math.round((Number(p.ram_total)||0)*1024);
+    if(p.swap_unit==='GB')p.swap_total=Math.round((Number(p.swap_total)||0)*1024);
+    if(p.disk_unit==='GB')p.disk_total=Math.round((Number(p.disk_total)||0)*1024);
+    if(p.net_unit==='KB'){p.net_min=Math.round((Number(p.net_min)||0)*1024);p.net_max=Math.round((Number(p.net_max)||0)*1024)}
+    else if(p.net_unit==='MB'){p.net_min=Math.round((Number(p.net_min)||0)*1048576);p.net_max=Math.round((Number(p.net_max)||0)*1048576)}
+    delete p.ram_unit;delete p.swap_unit;delete p.disk_unit;delete p.net_unit;
+    return p;
   },
 
   initDragDrop(){
