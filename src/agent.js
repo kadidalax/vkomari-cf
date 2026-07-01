@@ -153,7 +153,8 @@ export class VirtualAgent {
       );
     }
 
-    // Disk: system base (absolute MB) + slow growth. Barely moves short-term.
+    // Disk: system base (absolute MB) + slow growth + swap file usage.
+    // Swap is allocated from disk, so swap used space must be counted in disk.
     const [diskMin, diskMax] = this._range('disk_min', 'disk_max', 100);
     const diskVarSpan = Math.max(1, diskMax - diskMin);
     const diskGrowth = ((Math.floor(t / 3600) + Math.floor(this.nodeSeed * 100)) % 720) / 720;
@@ -162,7 +163,8 @@ export class VirtualAgent {
       0, 100
     );
     const diskTotalMB = this._mb('disk_total', 10240);
-    const diskUsedMB = this.usable.diskBaseMB + (diskTotalMB - this.usable.diskBaseMB) * diskVarPct / 100;
+    const swapUsedMB = swapTotalMB > 0 ? swapTotalMB * swap / 100 : 0;
+    const diskUsedMB = this.usable.diskBaseMB + (diskTotalMB - this.usable.diskBaseMB) * diskVarPct / 100 + swapUsedMB;
     const disk = this._clamp(diskUsedMB / diskTotalMB * 100, 0, 100);
 
     // Network: tied to CPU activity + burst, but with slightly slower oscillation.
