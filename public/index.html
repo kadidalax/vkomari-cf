@@ -188,9 +188,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
             模板库<span class="text-[10px] opacity-40" x-text="open?'▲':'▼'"></span>
           </button>
           <div x-show="open" @click.away="open=false" class="absolute left-0 mt-3 w-72 bg-zinc-900 glass rounded-2xl shadow-2xl z-50 overflow-hidden">
-            <div class="p-3 border-b border-white/5 bg-white/5">
-              <div class="flex gap-2"><input type="text" x-model="newTemplateName" placeholder="保存当前为模板..." class="flex-1 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs focus:border-violet-500 focus:outline-none"><button @click="saveAsTemplate();open=false" class="bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition">保存</button></div>
-            </div>
+            <div class="px-3 py-2 border-b border-white/5 bg-white/5 text-[10px] text-zinc-500 uppercase tracking-wider">点击应用模板 · 铅笔图标编辑</div>
             <div class="max-h-60 overflow-y-auto p-2 space-y-1 cs">
               <template x-for="t in templates" :key="t.id">
                 <div class="flex items-center group p-2.5 hover:bg-white/5 rounded-xl cursor-pointer transition">
@@ -297,26 +295,13 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
       </div>
     </div>
     <!-- Modal Footer -->
-    <div class="p-4 border-t border-white/5 bg-zinc-900/30 flex justify-between">
+    <div class="p-4 border-t border-white/5 bg-zinc-900/30 flex justify-between items-center">
       <button @click="deleteNode(form.id)" x-show="form.id" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm transition">删除节点</button>
-      <button @click="showModal=false" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-sm transition ml-auto">取消</button>
-      <button @click="saveNode()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-violet-900/20 ml-2">保存</button>
-    </div>
-  </div>
-</div>
-
-<!-- Template Edit Modal -->
-<div x-show="showTplEditModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity>
-  <div class="glass rounded-2xl p-6 w-full max-w-md">
-    <h3 class="text-lg font-bold mb-4">编辑模板</h3>
-    <label class="text-[10px] text-zinc-500 uppercase">模板名称</label>
-    <input type="text" x-model="tplEditForm.name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:border-violet-500 focus:outline-none mb-4 mt-1">
-    <label class="text-[10px] text-zinc-500 uppercase">配置 (JSON)</label>
-    <textarea x-model="tplEditForm.configText" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-xs font-mono focus:border-violet-500 focus:outline-none mb-4 mt-1 h-48 cs"></textarea>
-    <div x-show="tplEditError" class="text-red-400 text-xs mb-3" x-text="tplEditError"></div>
-    <div class="flex gap-2 justify-end">
-      <button @click="showTplEditModal=false" class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm transition">取消</button>
-      <button @click="saveTplEdit()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition">保存</button>
+      <div class="flex gap-2 ml-auto items-center">
+        <button @click="saveTemplateFromForm()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 px-4 py-2 rounded-lg text-sm transition border border-amber-600/20" x-text="editingTemplateId ? '更新模板' : '存为模板'"></button>
+        <button @click="showModal=false" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-sm transition">取消</button>
+        <button @click="saveNode()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-violet-900/20">保存</button>
+      </div>
     </div>
   </div>
 </div>
@@ -360,7 +345,7 @@ function app(){return{
   collapsedGroups:{},templates:[],
   confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
   showRenameModal:false,renameForm:{oldName:'',newName:''},
-  showTplEditModal:false,tplEditForm:{id:0,name:'',configText:''},tplEditError:'',
+  editingTemplateId:null,editingTemplateName:'',
   dd:DROPDOWN_DATA,
 
   notify(msg,type){const id=Date.now();this.toasts.push({id,message:msg,type});setTimeout(()=>{this.toasts=this.toasts.filter(t=>t.id!==id)},3000)},
@@ -403,9 +388,9 @@ function app(){return{
   async batchAction(a){try{await API.batchNodes(a);await this.loadNodes();this.notify(a==='start'?'已全部启动':'已全部停止','success')}catch(e){this.notify('操作失败: '+e.message,'error')}},
   async deleteNode(id){const ok=await this.showConfirm('删除节点','确定删除此节点？','danger','删除');if(!ok)return;try{await API.deleteNode(id);await this.loadNodes();this.notify('节点已删除','success')}catch(e){this.notify('删除失败: '+e.message,'error')}},
 
-  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:true,enabled:true,name:'',report_interval:3,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.refreshLoad(false);this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
+  openModal(){this.editingTemplateId=null;this.editingTemplateName='';this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:true,enabled:true,name:'',report_interval:3,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.refreshLoad(false);this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
 
-  editNode(n){this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.form.boot_date=n.boot_time?new Date(n.boot_time*1000).toISOString().slice(0,10):'';this.initUnits();this.showModal=true},
+  editNode(n){this.editingTemplateId=null;this.editingTemplateName='';this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.form.boot_date=n.boot_time?new Date(n.boot_time*1000).toISOString().slice(0,10):'';this.initUnits();this.showModal=true},
 
   refreshLoad(showToast=true){
     this.applyPreset();
@@ -458,12 +443,13 @@ function app(){return{
 
   async deleteTemplate(id){const ok=await this.showConfirm('删除模板','确定删除此模板？','danger','删除');if(!ok)return;try{await API.deleteTemplate(id);await this.loadTemplates()}catch(e){this.notify('删除失败','error')}},
 
-  editTemplate(t){this.tplEditForm={id:t.id,name:t.name,configText:JSON.stringify(t.config,null,2)};this.tplEditError='';this.showTplEditModal=true},
+  editTemplate(t){this.editingTemplateId=t.id;this.editingTemplateName=t.name;this.openModal();this.applyTemplate(t);this.notify('已加载模板「'+t.name+'」配置，修改后点击保存模板','info')},
 
-  async saveTplEdit(){
-    if(!this.tplEditForm.name.trim()){this.tplEditError='模板名称不能为空';return}
-    let cfg;try{cfg=JSON.parse(this.tplEditForm.configText)}catch(e){this.tplEditError='JSON格式错误: '+e.message;return}
-    try{await API.updateTemplate(this.tplEditForm.id,this.tplEditForm.name.trim(),cfg);this.showTplEditModal=false;await this.loadTemplates();this.notify('模板已更新','success')}catch(e){this.tplEditError=e.message||'保存失败'}
+  async saveTemplateFromForm(){
+    const f=this.normalizedForm();
+    const cfg={os:f.os,arch:f.arch,virtualization:f.virtualization,region:f.region,cpu_model:f.cpu_model,gpu_name:f.gpu_name,kernel_version:f.kernel_version,cpu_cores:f.cpu_cores,ram_total:f.ram_total,swap_total:f.swap_total,disk_total:f.disk_total,load_profile:f.load_profile,cpu_min:f.cpu_min,cpu_max:f.cpu_max,mem_min:f.mem_min,mem_max:f.mem_max,swap_min:f.swap_min,swap_max:f.swap_max,disk_min:f.disk_min,disk_max:f.disk_max,net_min:f.net_min,net_max:f.net_max,conn_min:f.conn_min,conn_max:f.conn_max,proc_min:f.proc_min,proc_max:f.proc_max,report_interval:f.report_interval,traffic_reset_day:f.traffic_reset_day,report_enabled:f.report_enabled?1:0};
+    const name=this.editingTemplateName||prompt('模板名称:');if(!name)return;
+    try{if(this.editingTemplateId){await API.updateTemplate(this.editingTemplateId,name,cfg)}else{await API.saveTemplate(name,cfg)}await this.loadTemplates();this.notify('模板已保存','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
   },
 
   parseScript(){
