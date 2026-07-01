@@ -216,7 +216,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>基础信息</h3>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="text-[10px] text-zinc-500 uppercase">名称</label><input x-model="form.name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">分组</label><input x-model="form.group_name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1" placeholder="香港集群"></div>
+          <div><label class="text-[10px] text-zinc-500 uppercase">分组</label><select x-model="form.group_name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="">无分组</option><template x-for="g in groups" :key="g"><option :value="g" x-text="g||'未分组'"></option></template></select></div>
           <div><label class="text-[10px] text-zinc-500 uppercase">地区</label>
             <div class="relative mt-1" x-data="{open:false}">
               <div @click="open=!open" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center gap-2"><span x-text="getFlag(form.region)"></span><span x-text="form.region||'CN'"></span></div>
@@ -361,11 +361,11 @@ function app(){return{
   getKernels(os){return this.dd.kernelMap[os]||this.dd.kernelMap['Ubuntu 24.04 LTS']||['5.15.0-generic']},
   onOsChange(){const k=this.getKernels(this.form.os);if(k.length&&!k.includes(this.form.kernel_version)) this.form.kernel_version=k[0]},
 
-  toggleCollapse(g){this.collapsedGroups[g]=!this.collapsedGroups[g]},
+  toggleCollapse(g){this.collapsedGroups[g]=!this.collapsedGroups[g];try{localStorage.setItem('vkomari_collapsed',JSON.stringify(this.collapsedGroups))}catch(e){}},
 
   init(){
     if(this.token){this.validateToken()}
-    this.collapsedGroups={}
+    try{this.collapsedGroups=JSON.parse(localStorage.getItem('vkomari_collapsed')||'{}')}catch(e){this.collapsedGroups={}}
   },
 
   async validateToken(){
@@ -385,7 +385,7 @@ function app(){return{
   async batchAction(a){try{await API.batchNodes(a);await this.loadNodes();this.notify(a==='start'?'已全部启动':'已全部停止','success')}catch(e){this.notify('操作失败: '+e.message,'error')}},
   async deleteNode(id){const ok=await this.showConfirm('删除节点','确定删除此节点？','danger','删除');if(!ok)return;try{await API.deleteNode(id);await this.loadNodes();this.notify('节点已删除','success')}catch(e){this.notify('删除失败: '+e.message,'error')}},
 
-  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:false,enabled:true,name:'',report_interval:3,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.refreshLoad(false);this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
+  openModal(){this.form={os:'Debian GNU/Linux 12 (bookworm)',arch:'amd64',virtualization:'kvm',region:'CN',cpu_model:'Intel(R) Xeon(R) CPU E5-2690 v4 @ 2.60GHz',cpu_cores:2,ram_total:2,ram_unit:'GB',swap_total:512,swap_unit:'MB',disk_total:20,disk_unit:'GB',net_unit:'Bytes',load_profile:'mid',cpu_min:0,cpu_max:0,mem_min:0,mem_max:0,swap_min:0,swap_max:0,disk_min:0,disk_max:0,net_min:0,net_max:0,conn_min:0,conn_max:0,proc_min:0,proc_max:0,fake_ip:'',group_name:'',komari_server:'',komari_token:'',cfmonitor_server:'',cfmonitor_token:'',report_enabled:true,enabled:true,name:'',report_interval:3,traffic_reset_day:1,boot_time:0,uptime_base:86400,boot_date:'',kernel_version:this.getKernels('Debian GNU/Linux 12 (bookworm)')[0]};this.refreshLoad(false);this.generateIpForRegion('CN');this.parseResult='';this.installScript='';this.showModal=true},
 
   editNode(n){this.form={...n,report_enabled:!!n.report_enabled,enabled:!!n.enabled};this.parseResult='';this.installScript='';this.form.kernel_version=n.kernel_version||this.getKernels(n.os)[0]||'';this.form.boot_date=n.boot_time?new Date(n.boot_time*1000).toISOString().slice(0,10):'';this.initUnits();this.showModal=true},
 
