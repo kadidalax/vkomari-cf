@@ -4,9 +4,9 @@
 const MB = 1048576;
 
 const PROFILE_DEFAULTS = {
-  low: { cpu_min: 1, cpu_max: 30, mem_min: 8, mem_max: 18, swap_min: 0, swap_max: 2, disk_min: 8, disk_max: 28, net_min: 10000, net_max: 200000, conn_min: 2, conn_max: 25, proc_min: 35, proc_max: 70 },
-  mid: { cpu_min: 1, cpu_max: 60, mem_min: 35, mem_max: 55, swap_min: 0, swap_max: 8, disk_min: 30, disk_max: 58, net_min: 102400, net_max: 1024000, conn_min: 30, conn_max: 120, proc_min: 70, proc_max: 140 },
-  high: { cpu_min: 1, cpu_max: 90, mem_min: 72, mem_max: 92, swap_min: 8, swap_max: 40, disk_min: 68, disk_max: 86, net_min: 1048576, net_max: 5242880, conn_min: 220, conn_max: 850, proc_min: 120, proc_max: 260 }
+  low: { cpu_min: 0, cpu_max: 35, cpu_rest: 0.01, cpu_burst_period1: 22, cpu_burst_period2: 55, cpu_burst_period3: 9, cpu_burst_amp: 0.55, mem_min: 8, mem_max: 18, swap_min: 0, swap_max: 2, disk_min: 8, disk_max: 28, net_min: 10000, net_max: 200000, conn_min: 2, conn_max: 25, proc_min: 35, proc_max: 70 },
+  mid: { cpu_min: 0, cpu_max: 65, cpu_rest: 0.04, cpu_burst_period1: 11, cpu_burst_period2: 31, cpu_burst_period3: 6, cpu_burst_amp: 0.75, mem_min: 35, mem_max: 55, swap_min: 0, swap_max: 8, disk_min: 30, disk_max: 58, net_min: 102400, net_max: 1024000, conn_min: 30, conn_max: 120, proc_min: 70, proc_max: 140 },
+  high: { cpu_min: 0, cpu_max: 95, cpu_rest: 0.08, cpu_burst_period1: 5, cpu_burst_period2: 15, cpu_burst_period3: 3.5, cpu_burst_amp: 1.0, mem_min: 72, mem_max: 92, swap_min: 8, swap_max: 40, disk_min: 68, disk_max: 86, net_min: 1048576, net_max: 5242880, conn_min: 220, conn_max: 850, proc_min: 120, proc_max: 260 }
 };
 
 export class VirtualAgent {
@@ -91,16 +91,22 @@ export class VirtualAgent {
       0,
       1
     );
+    const cpuBurstP1 = this._num('cpu_burst_period1');
+    const cpuBurstP2 = this._num('cpu_burst_period2');
+    const cpuBurstP3 = this._num('cpu_burst_period3');
     const burst = Math.max(
-      this._pulse(t, 7 + this.nodeSeed * 4, 0.22, this.nodeSeed * 11),
-      this._pulse(t, 17 + this.nodeSeed * 9, 0.16, 4.7)
+      this._pulse(t, cpuBurstP1 + this.nodeSeed * 4, 0.22, this.nodeSeed * 11),
+      this._pulse(t, cpuBurstP2 + this.nodeSeed * 9, 0.16, 4.7),
+      this._pulse(t, cpuBurstP3 + this.nodeSeed * 2, 0.12, this.nodeSeed * 7.3)
     );
 
     const [cpuMin, cpuMax] = this._range('cpu_min', 'cpu_max', 100);
     const cpuSpan = Math.max(1, cpuMax - cpuMin);
-    const cpuSoft = cpuMin + cpuSpan * (0.10 + active * 0.45 + this._wave(t, 23, 0.8) * 0.18 + this._wave(t, 4.5, 2.4) * 0.12);
-    const cpuOvershoot = Math.min(26, Math.max(1.2, cpuSpan * 0.34));
-    const cpu = this._clamp(cpuSoft + burst * cpuOvershoot - this._wave(t, 11, 2.1) * cpuSpan * 0.08, 0, 100);
+    const cpuRest = this._num('cpu_rest');
+    const cpuBurstAmp = this._num('cpu_burst_amp');
+    const cpuSoft = cpuMin + cpuSpan * (cpuRest + active * 0.30 + this._wave(t, 23, 0.8) * 0.16 + this._wave(t, 4.5, 2.4) * 0.12 + this._wave(t, 2.2, 4.1) * 0.08);
+    const cpuOvershoot = Math.min(40, Math.max(1.2, cpuSpan * cpuBurstAmp));
+    const cpu = this._clamp(cpuSoft + burst * cpuOvershoot - this._wave(t, 11, 2.1) * cpuSpan * (cpuRest + 0.18), 0, 100);
 
     const [memMin, memMax] = this._range('mem_min', 'mem_max', 100);
     const memSpan = Math.max(1, memMax - memMin);

@@ -95,7 +95,9 @@ async function runCron(env, ctx) {
     if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
   }
 
-  for (const r of reporters) r.inst.close();
+  // Do NOT explicitly close WebSocket connections here.
+  // Letting them die naturally when the execution context is cleaned up
+  // maximizes overlap with the next cron invocation, reducing offline gaps.
   console.log(`[vKomari] Cron finished: ${Date.now() - start}ms`);
 }
 

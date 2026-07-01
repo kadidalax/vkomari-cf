@@ -3,8 +3,18 @@ import { VirtualAgent } from '../agent.js';
 import { openReporterWebSocket } from './ws.js';
 
 function countryFlag(region) {
-  const code = String(region || '').trim().toUpperCase();
-  if (!/^[A-Z]{2}$/.test(code)) return String(region || '').trim();
+  const raw = String(region || '').trim();
+  if (!raw) return '';
+  if (raw.includes(',')) {
+    const match = raw.match(/([A-Za-z]{2})\s*$/);
+    if (match) {
+      const code = match[1].toUpperCase();
+      return [...code].map(ch => String.fromCodePoint(0x1f1e6 + ch.charCodeAt(0) - 65)).join('');
+    }
+    return raw;
+  }
+  const code = raw.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) return raw;
   return [...code].map(ch => String.fromCodePoint(0x1f1e6 + ch.charCodeAt(0) - 65)).join('');
 }
 
@@ -120,7 +130,9 @@ export class KomariReporter {
     try {
       this.ws.send(JSON.stringify(this.buildReport()));
       this.logSend();
-    } catch {}
+    } catch {
+      this.ws = null;
+    }
   }
 
   logName() {

@@ -1,5 +1,6 @@
 // CF-VPS-Monitor reporter: Agent WebSocket policy mode, HTTP idle fallback.
 import { VirtualAgent } from '../agent.js';
+import { COUNTRY_REGIONS } from '../data/countries.js';
 import { openReporterWebSocket } from './ws.js';
 
 export class CFMonitorReporter {
@@ -67,20 +68,10 @@ export class CFMonitorReporter {
   }
 
   regionLabel() {
-    const code = String(this.config.region || 'CN').toUpperCase();
-    const names = {
-      AE: 'Dubai, Dubai, AE',
-      CN: 'Shanghai, China, CN',
-      HK: 'Hong Kong, HK',
-      TW: 'Taipei, Taiwan, TW',
-      US: 'Los Angeles, California, US',
-      JP: 'Tokyo, Japan, JP',
-      SG: 'Singapore, SG',
-      DE: 'Frankfurt, Hesse, DE',
-      GB: 'London, England, GB',
-      NL: 'Amsterdam, North Holland, NL'
-    };
-    return names[code] || `${code} VPS`;
+    const raw = String(this.config.region || '').trim();
+    if (raw.includes(',')) return raw;
+    const code = (raw || 'CN').toUpperCase();
+    return COUNTRY_REGIONS[code] || `VPS, ${code}, ${code}`;
   }
 
   basicInfo() {
@@ -112,7 +103,7 @@ export class CFMonitorReporter {
     if (this.isOpen() || this.connecting) return this.connecting;
     this.connecting = (async () => {
       try { await this.connectWebSocket(); }
-      finally { this.nextConnectAt = this.isOpen() ? 0 : Date.now() + 60000; }
+      finally { this.nextConnectAt = this.isOpen() ? 0 : Date.now() + 5000; }
     })().finally(() => { this.connecting = null; });
     return this.connecting;
   }
@@ -214,7 +205,9 @@ export class CFMonitorReporter {
     try {
       this.ws.send(JSON.stringify(this.reportBody(now)));
       this.logSend('ws', now);
-    } catch {}
+    } catch {
+      this.ws = null;
+    }
   }
 
   logName() {
