@@ -79,25 +79,26 @@ async function runCron(env, ctx) {
     }
   }
 
-  for (const r of reporters) {
-    try { await r.inst.connect(); } catch (err) { console.error(`[vKomari] connect failed: ${r.type}`, err); }
-  }
+  // Connect all reporters in parallel to minimize startup latency
+  await Promise.allSettled(reporters.map(r => r.inst.connect?.().catch(err => console.error(`[vKomari] connect failed: ${r.type}`, err))));
 
   const start = Date.now();
   const MAX_DURATION = 65000;
 
   while (Date.now() - start < MAX_DURATION) {
     const loopStart = Date.now();
-    for (const r of reporters) {
+    // Run all reporters in parallel — each internally throttles its own interval.
+    // Serial execution caused cascading delays: N nodes × send latency > target interval.
+    await Promise.allSettled(reporters.map(async (r) => {
       try {
         if (r.type === 'komari') await r.inst.send();
         else await r.inst.tick();
       } catch (err) {
         console.error(`[vKomari] reporter failed: ${r.type}`, err);
       }
-    }
+    }));
     const elapsed = Date.now() - loopStart;
-    // Komari needs 1s interval, so wait at most 1s
+    // Tick every 1s so Komari (1s interval) and CF Monitor (3s active) stay responsive
     const wait = Math.max(0, 1000 - elapsed);
     if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
   }

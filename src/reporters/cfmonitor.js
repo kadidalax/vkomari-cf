@@ -14,10 +14,12 @@ export class CFMonitorReporter {
     this.connecting = null;
     this.nextConnectAt = 0;
     this.lastSample = 0;
+    this.lastSendAt = 0;
     this.lastPolicyAt = 0;
     this.lastIdleBucket = -1;
     this.infoSent = false;
     this.lastSendLogAt = 0;
+    this.forceNextSend = false;
   }
 
   get httpBase() {
@@ -154,10 +156,14 @@ export class CFMonitorReporter {
 
   applyPolicy(msg) {
     if (msg?.type !== 'policy') return;
+    const wasIdle = this.policy.mode !== 'active';
     this.policy.mode = msg.mode || 'idle';
     this.policy.sampleInterval = (msg.sample_interval_sec || 120) * 1000;
     this.policy.reportInterval = (msg.report_interval_sec || 120) * 1000;
-    if (msg.report_now) this.lastSample = 0;
+    if (msg.report_now || (wasIdle && this.policy.mode === 'active')) {
+      this.lastSample = 0;
+      this.forceNextSend = true;
+    }
   }
 
   async tick() {
@@ -172,14 +178,25 @@ export class CFMonitorReporter {
   }
 
   shouldSend(now) {
+    // Force immediate send when policy switches to active (viewer opened panel)
+    if (this.forceNextSend) {
+      this.forceNextSend = false;
+      this.lastSample = now;
+      this.lastSendAt = now;
+      return true;
+    }
     if (this.policy.mode === 'active') {
-      if (now - this.lastSample < this.policy.sampleInterval) return false;
+      const interval = Math.max(1000, this.policy.sampleInterval);
+      if (now - this.lastSample < interval) return false;
       this.lastSample = now;
     } else {
-      const bucket = Math.floor(now / Math.max(60000, this.policy.reportInterval));
-      if (new Date(now).getUTCMinutes() % 2 !== 0 || bucket === this.lastIdleBucket) return false;
-      this.lastIdleBucket = bucket;
+      // Idle: use interval-based throttle instead of minute-parity check.
+      // The old `getUTCMinutes() % 2` check could block sends for up to 119s
+      // even after switching from active→idle, and caused unpredictable timing.
+      const interval = Math.max(60000, this.policy.reportInterval);
+      if (now - this.lastSendAt < interval) return false;
     }
+    this.lastSendAt = now;
     return true;
   }
 
