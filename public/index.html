@@ -215,7 +215,21 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         <h3 class="text-xs font-bold text-violet-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span class="w-1 h-4 bg-violet-500 rounded-full"></span>基础信息</h3>
         <div class="grid grid-cols-2 gap-3">
           <div><label class="text-[10px] text-zinc-500 uppercase">名称</label><input x-model="form.name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"></div>
-          <div><label class="text-[10px] text-zinc-500 uppercase">分组</label><select x-model="form.group_name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none mt-1"><option value="">无分组</option><template x-for="g in groups" :key="g"><option :value="g" x-text="g||'未分组'"></option></template></select></div>
+          <div>
+            <label class="text-[10px] text-zinc-500 uppercase">分组</label>
+            <div class="relative mt-1" x-data="{grpOpen:false}">
+              <input type="text" x-model="form.group_name" @focus="grpOpen=true" @blur="setTimeout(()=>grpOpen=false,150)" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none pr-8" placeholder="输入新分组或选择已有">
+              <button type="button" @click="grpOpen=!grpOpen" class="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 pointer-events-auto">
+                <svg class="w-4 h-4 transition-transform" :class="grpOpen ? 'rotate-180' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div x-show="grpOpen" class="absolute z-50 left-0 right-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-xl max-h-40 overflow-y-auto cs">
+                <div @click="form.group_name='';grpOpen=false" class="px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-700 cursor-pointer">无分组</div>
+                <template x-for="g in groups" :key="g">
+                  <div x-show="g" @click="form.group_name=g;grpOpen=false" class="px-3 py-1.5 text-sm text-zinc-300 hover:bg-zinc-700 cursor-pointer" x-text="g"></div>
+                </template>
+              </div>
+            </div>
+          </div>
           <div><label class="text-[10px] text-zinc-500 uppercase">地区</label>
             <div class="relative mt-1" x-data="{open:false}">
               <div @click="open=!open" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm cursor-pointer flex items-center gap-2"><span x-text="getFlag(form.region)"></span><span x-text="form.region||'CN'"></span></div>
