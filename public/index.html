@@ -321,6 +321,46 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
   </div>
 </div>
 
+<!-- Import Group Selector Modal -->
+<div x-show="showImportGroupModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity @keydown.escape.window="showImportGroupModal=false">
+  <div class="glass rounded-2xl p-6 w-full max-w-sm">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-10 h-10 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center">
+        <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+      </div>
+      <div>
+        <h3 class="text-base font-bold text-zinc-100">导入节点</h3>
+        <p class="text-[11px] text-zinc-500" x-text="pendingImportNodes ? '即将导入 ' + pendingImportNodes.length + ' 个节点' : ''"></p>
+      </div>
+    </div>
+    <label class="text-[10px] text-zinc-500 uppercase mb-2 block">选择分组方式</label>
+    <div class="space-y-2 mb-4">
+      <label class="flex items-center gap-2 p-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 cursor-pointer transition border border-zinc-700/30" :class="importGroupForm.mode==='none' ? 'border-violet-500/40 bg-violet-500/5' : ''">
+        <input type="radio" x-model="importGroupForm.mode" value="none" class="text-violet-500"><span class="text-sm text-zinc-300">不分组（默认）</span>
+      </label>
+      <label class="flex items-center gap-2 p-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 cursor-pointer transition border border-zinc-700/30" :class="importGroupForm.mode==='existing' ? 'border-violet-500/40 bg-violet-500/5' : ''">
+        <input type="radio" x-model="importGroupForm.mode" value="existing" class="text-violet-500"><span class="text-sm text-zinc-300">选择已有分组</span>
+      </label>
+      <div x-show="importGroupForm.mode==='existing'" class="pl-6">
+        <select x-model="importGroupForm.groupName" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none">
+          <option value="">请选择...</option>
+          <template x-for="g in groups" :key="g"><option :value="g" x-text="g||'未分组'"></option></template>
+        </select>
+      </div>
+      <label class="flex items-center gap-2 p-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 cursor-pointer transition border border-zinc-700/30" :class="importGroupForm.mode==='new' ? 'border-violet-500/40 bg-violet-500/5' : ''">
+        <input type="radio" x-model="importGroupForm.mode" value="new" class="text-violet-500"><span class="text-sm text-zinc-300">新建分组</span>
+      </label>
+      <div x-show="importGroupForm.mode==='new'" class="pl-6">
+        <input type="text" x-model="importGroupForm.newGroup" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm focus:border-violet-500 focus:outline-none" placeholder="输入新分组名称" x-ref="newGroupInput">
+      </div>
+    </div>
+    <div class="flex gap-2 justify-end">
+      <button @click="cancelImport()" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-4 py-2 rounded-lg text-sm transition">取消</button>
+      <button @click="confirmImport()" class="bg-violet-600 hover:bg-violet-500 text-white px-5 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-violet-900/20">导入</button>
+    </div>
+  </div>
+</div>
+
 <!-- Save Template As Modal -->
 <div x-show="showSaveTplModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity @keydown.escape.window="showSaveTplModal=false">
   <div class="glass rounded-2xl p-6 w-full max-w-sm" @click.away="showSaveTplModal=false">
@@ -380,6 +420,7 @@ function app(){return{
   collapsedGroups:{},templates:[],
   confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
   showRenameModal:false,renameForm:{oldName:'',newName:''},
+  showImportGroupModal:false,importGroupForm:{mode:'none',groupName:'',newGroup:''},pendingImportNodes:null,
   editingTemplateId:null,editingTemplateName:'',
   showSaveTplModal:false,saveTplName:'',
   dd:DROPDOWN_DATA,
@@ -518,9 +559,23 @@ function app(){return{
   async importNodesFromFile(e){
     const file=e.target.files[0];if(!file)return;
     try{const text=await file.text();const nodes=JSON.parse(text);if(!Array.isArray(nodes))throw new Error('格式错误');
-    const ok=await this.showConfirm('导入节点','确定导入 '+nodes.length+' 个节点？','info','导入');if(!ok)return;
-    await API.importNodes(nodes);await this.loadNodes();this.notify('成功导入 '+nodes.length+' 个节点','success');
+    this.pendingImportNodes=nodes;
+    this.importGroupForm={mode:'none',groupName:'',newGroup:''};
+    this.showImportGroupModal=true;
     e.target.value=''}catch(e){this.notify('导入失败: '+e.message,'error');e.target.value=''}
+  },
+
+  cancelImport(){this.showImportGroupModal=false;this.pendingImportNodes=null},
+
+  async confirmImport(){
+    if(!this.pendingImportNodes)return;
+    const mode=this.importGroupForm.mode;
+    let groupName='';
+    if(mode==='existing'){groupName=this.importGroupForm.groupName;if(!groupName){this.notify('请选择已有分组','error');return}}
+    else if(mode==='new'){groupName=this.importGroupForm.newGroup.trim();if(!groupName){this.notify('请输入新分组名称','error');return}}
+    const nodes=this.pendingImportNodes.map(n=>({...n,group_name:mode==='none'?(n.group_name||''):groupName}));
+    try{await API.importNodes(nodes);await this.loadNodes();this.notify('成功导入 '+nodes.length+' 个节点','success')}catch(e){this.notify('导入失败: '+e.message,'error')}
+    this.showImportGroupModal=false;this.pendingImportNodes=null
   },
 
   generateIpForRegion(code){
