@@ -65,6 +65,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         <input type="file" x-ref="importFile" @change="importNodesFromFile" class="hidden" accept=".json" multiple>
         <div class="w-px h-6 bg-zinc-700 mx-1"></div>
         <button @click="showPwdModal=true" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">改密</button>
+        <button @click="showCFDiag()" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">CF诊断</button>
         <button @click="logout" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">退出</button>
         <button @click="openModal()" class="px-4 py-1.5 text-xs bg-violet-600 hover:bg-violet-500 text-white rounded font-medium shadow-lg shadow-violet-900/20 transition flex items-center gap-1"><span class="text-lg leading-none">+</span> 添加节点</button>
         <a href="https://github.com/kadidalax/vkomari-cf" target="_blank" class="ml-2 p-1.5 text-zinc-400 hover:text-white transition bg-zinc-700/50 hover:bg-zinc-700 rounded-lg" title="GitHub">
@@ -336,6 +337,49 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
   </div>
 </div>
 
+<!-- CF Monitor Diagnostic Modal -->
+<div x-show="showCFDiagModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity @keydown.escape.window="showCFDiagModal=false">
+  <div class="glass rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto cs">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold text-zinc-100">CF Monitor 诊断</h3>
+      <div class="flex gap-2">
+        <button @click="showCFDiag()" class="text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 px-3 py-1.5 rounded transition">刷新</button>
+        <button @click="showCFDiagModal=false" class="text-zinc-500 hover:text-zinc-300 text-sm">✕</button>
+      </div>
+    </div>
+    <div x-show="!cfDiagData" class="text-center py-8 text-zinc-500 text-sm">加载中...</div>
+    <div x-show="cfDiagData && cfDiagData.reporters.length === 0" class="text-center py-8 text-zinc-500 text-sm">
+      暂无CF Monitor上报器。<br>可能原因: 1)没有配置cfmonitor_server和token的节点 2)Cron尚未运行(每分钟一次)
+    </div>
+    <template x-if="cfDiagData && cfDiagData.reporters.length > 0">
+      <div class="space-y-2">
+        <div class="text-[10px] text-zinc-500 mb-2" x-text="'服务器时间: ' + new Date(cfDiagData.serverTime).toLocaleTimeString()"></div>
+        <template x-for="r in cfDiagData.reporters" :key="r.name">
+          <div class="bg-zinc-800/50 rounded-lg p-3 border border-zinc-700/30">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-sm font-medium text-zinc-200" x-text="r.name"></span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                :class="{'bg-green-500/10 text-green-400': r.wsState==='open', 'bg-red-500/10 text-red-400': r.wsState==='error'||r.wsState==='no_socket', 'bg-amber-500/10 text-amber-400': r.wsState==='timeout'||r.wsState==='closed', 'bg-zinc-700 text-zinc-400': r.wsState==='connecting'}"
+                x-text="r.wsState"></span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-mono"
+                :class="{'bg-violet-500/10 text-violet-400': r.policyMode==='active', 'bg-zinc-700 text-zinc-400': r.policyMode==='idle'}"
+                x-text="'policy: '+r.policyMode"></span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-mono" :class="r.usingServiceBinding ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-700 text-zinc-400'" x-text="r.usingServiceBinding ? 'binding' : 'fetch'"></span>
+            </div>
+            <div class="grid grid-cols-2 gap-1 text-[11px] text-zinc-500 font-mono">
+              <div>发送次数: <span class="text-zinc-300" x-text="r.sendCount"></span></div>
+              <div>上次发送: <span class="text-zinc-300" x-text="r.lastSendAge >= 0 ? Math.round(r.lastSendAge/1000)+'s前' : '从未'"></span></div>
+              <div>上次policy: <span class="text-zinc-300" x-text="r.lastPolicyAge >= 0 ? Math.round(r.lastPolicyAge/1000)+'s前' : '从未'"></span></div>
+              <div x-show="r.wsError" class="col-span-2 text-red-400">错误: <span x-text="r.wsError"></span></div>
+              <div x-show="r.wsUrl" class="col-span-2 text-zinc-600 truncate">URL: <span x-text="r.wsUrl"></span></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </template>
+  </div>
+</div>
+
 <!-- Import Group Selector Modal -->
 <div x-show="showImportGroupModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity @keydown.escape.window="showImportGroupModal=false">
   <div class="glass rounded-2xl p-6 w-full max-w-sm">
@@ -436,6 +480,7 @@ function app(){return{
   selectedNodes:{},batchMode:false,batchTargetGroup:'',
   confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
   showRenameModal:false,renameForm:{oldName:'',newName:''},
+  showCFDiagModal:false,cfDiagData:null,
   showImportGroupModal:false,importGroupForm:{mode:'none',groupName:'',newGroup:''},pendingImportNodes:null,
   editingTemplateId:null,editingTemplateName:'',
   showSaveTplModal:false,saveTplName:'',
@@ -615,6 +660,11 @@ function app(){return{
   },
 
   cancelImport(){this.showImportGroupModal=false;this.pendingImportNodes=null},
+
+  async showCFDiag(){
+    this.showCFDiagModal=true;this.cfDiagData=null;
+    try{const r=await fetch('/api/cfmonitor/diag',{headers:{'Authorization':'Bearer '+this.token}});if(!r.ok)throw new Error(r.status);this.cfDiagData=await r.json()}catch(e){this.notify('诊断加载失败: '+e.message,'error')}
+  },
 
   async confirmImport(){
     if(!this.pendingImportNodes)return;

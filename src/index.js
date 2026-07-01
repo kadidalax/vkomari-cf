@@ -54,6 +54,26 @@ app.post('/api/templates/delete', authMiddleware, async (c) => {
 
 app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
 
+app.get('/api/cfmonitor/diag', authMiddleware, async (c) => {
+  const { cfDiag } = await import('./reporters/cfmonitor.js');
+  return c.json({
+    reporters: cfDiag.reporters.map(r => ({
+      name: r.name,
+      wsState: r.wsState,
+      policyMode: r.policyMode,
+      lastPolicyTs: r.lastPolicyTs,
+      lastPolicyAge: r.lastPolicyTs ? Date.now() - r.lastPolicyTs : -1,
+      lastSendTs: r.lastSendTs,
+      lastSendAge: r.lastSendTs ? Date.now() - r.lastSendTs : -1,
+      sendCount: r.sendCount,
+      wsError: r.wsError,
+      wsUrl: r.wsUrl,
+      usingServiceBinding: r.usingServiceBinding,
+    })),
+    serverTime: Date.now(),
+  });
+});
+
 app.onError((err, c) => {
   console.error(`[vKomari Error] ${err}`);
   return c.json({ error: 'Internal Server Error', message: err.message }, 500);
@@ -68,6 +88,11 @@ async function runCron(env, ctx) {
   if (!results || results.length === 0) return;
 
   console.log(`[vKomari] Cron: ${results.length} enabled nodes`);
+
+  // Reset diagnostic store for this cron cycle
+  const { cfDiag } = await import('./reporters/cfmonitor.js');
+  cfDiag.reporters = [];
+  cfDiag.lastUpdate = Date.now();
 
   const reporters = [];
   for (const node of results) {

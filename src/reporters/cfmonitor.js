@@ -3,6 +3,9 @@ import { VirtualAgent } from '../agent.js';
 import { COUNTRY_REGIONS } from '../data/countries.js';
 import { openReporterWebSocket } from './ws.js';
 
+// Module-level diagnostic store — accessible from fetch handler
+export const cfDiag = { reporters: [], lastUpdate: 0 };
+
 export class CFMonitorReporter {
   constructor(config, env = {}) {
     this.config = config;
@@ -20,6 +23,19 @@ export class CFMonitorReporter {
     this.infoSent = false;
     this.lastSendLogAt = 0;
     this.forceNextSend = false;
+    this.diag = {
+      name: config.name || '',
+      wsState: 'closed',
+      policyMode: 'idle',
+      lastSendTs: 0,
+      lastPolicyTs: 0,
+      lastPolicyMode: '',
+      sendCount: 0,
+      wsError: '',
+      wsUrl: '',
+      usingServiceBinding: false,
+    };
+    cfDiag.reporters.push(this.diag);
   }
 
   get httpBase() {
@@ -41,15 +57,20 @@ export class CFMonitorReporter {
 
   fetcher() {
     const service = this.env?.CF_MONITOR;
-    if (!service?.fetch) return null;
+    if (!service?.fetch) { this.diag.usingServiceBinding = false; return null; }
     try {
       const host = new URL(this.httpBase).hostname.toLowerCase();
       const allowed = String(this.env?.CF_MONITOR_SERVICE_HOSTS || 'cf-vps-monitor-demo.work-631.workers.dev')
         .split(',')
         .map(h => h.trim().toLowerCase())
         .filter(Boolean);
-      return allowed.includes(host) ? service : null;
+      // Also allow the bound service name as a valid host
+      const serviceName = this.env?.CF_MONITOR?.name?.toLowerCase?.() || '';
+      const isAllowed = allowed.includes(host) || host === serviceName || allowed.some(a => host.endsWith('.' + a) || a.endsWith('.' + host));
+      this.diag.usingServiceBinding = isAllowed;
+      return isAllowed ? service : null;
     } catch {
+      this.diag.usingServiceBinding = false;
       return null;
     }
   }
@@ -116,21 +137,43 @@ export class CFMonitorReporter {
 
   async connectWebSocket() {
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
-    this.ws = await openReporterWebSocket(this.wsUrl, this.logName(), this.fetcher());
-    if (!this.ws) return;
+    this.diag.wsUrl = this.wsUrl.replace(/token=[^&]+/, 'token=***');
+    const fetcher = this.fetcher();
+    this.ws = await openReporterWebSocket(this.wsUrl, this.logName(), fetcher);
+    if (!this.ws) {
+      this.diag.wsState = 'no_socket';
+      this.diag.wsError = 'openReporterWebSocket returned null';
+      console.log(`[vKomari] ${this.logName()} WS: no socket created`);
+      return;
+    }
+    this.diag.wsState = 'connecting';
+    this.diag.wsError = '';
     this.ws.addEventListener('message', (event) => {
-      try { this.applyPolicy(JSON.parse(event.data)); } catch {}
+      try {
+        const msg = JSON.parse(event.data);
+        this.applyPolicy(msg);
+        if (msg.type === 'ack') {
+          // ack from server, no action needed
+        }
+      } catch {}
     });
-    this.ws.addEventListener('close', () => { this.ws = null; });
-    this.ws.addEventListener('error', () => { this.ws = null; });
+    this.ws.addEventListener('close', () => { this.ws = null; this.diag.wsState = 'closed'; });
+    this.ws.addEventListener('error', () => { this.ws = null; this.diag.wsState = 'error'; this.diag.wsError = 'ws error event'; });
     await new Promise((resolve) => {
       let done = false;
       const finish = () => { if (!done) { done = true; resolve(); } };
       this.ws.addEventListener('open', finish);
       this.ws.addEventListener('error', finish);
       if (this.isOpen()) finish();
-      setTimeout(finish, 1500);
+      setTimeout(finish, 3000);
     });
+    if (this.isOpen()) {
+      this.diag.wsState = 'open';
+      console.log(`[vKomari] ${this.logName()} WS: connected (binding=${this.diag.usingServiceBinding})`);
+    } else {
+      this.diag.wsState = this.diag.wsState === 'error' ? 'error' : 'timeout';
+      console.log(`[vKomari] ${this.logName()} WS: not open after connect (state=${this.diag.wsState})`);
+    }
   }
 
   async uploadBasicInfo() {
@@ -160,10 +203,14 @@ export class CFMonitorReporter {
     this.policy.mode = msg.mode || 'idle';
     this.policy.sampleInterval = (msg.sample_interval_sec || 120) * 1000;
     this.policy.reportInterval = (msg.report_interval_sec || 120) * 1000;
+    this.diag.policyMode = this.policy.mode;
+    this.diag.lastPolicyTs = Date.now();
+    this.diag.lastPolicyMode = msg.mode || 'idle';
     if (msg.report_now || (wasIdle && this.policy.mode === 'active')) {
       this.lastSample = 0;
       this.forceNextSend = true;
     }
+    console.log(`[vKomari] ${this.logName()} policy: mode=${this.policy.mode} interval=${this.policy.sampleInterval}ms report_now=${!!msg.report_now}`);
   }
 
   async tick() {
@@ -202,7 +249,8 @@ export class CFMonitorReporter {
 
   reportBody(now) {
     const report = this.buildReport(now, this.policyReportIntervalSec());
-    return this.policy.mode === 'active' ? report : { type: 'reports', reports: [report] };
+    // Always use 'reports' format — server branch A triggers ack + policy refresh
+    return { type: 'reports', reports: [report] };
   }
 
   async sendHttp(now) {
@@ -213,17 +261,25 @@ export class CFMonitorReporter {
         headers: this.headers(),
         body: JSON.stringify(this.reportBody(now))
       });
+      this.diag.sendCount++;
+      this.diag.lastSendTs = now;
       this.logSend('http', now, `status=${res.status}`);
-    } catch {}
+    } catch (e) {
+      this.diag.wsError = `http: ${e?.name || e}`;
+    }
   }
 
   sendWebSocket(now) {
     if (!this.shouldSend(now)) return;
     try {
       this.ws.send(JSON.stringify(this.reportBody(now)));
+      this.diag.sendCount++;
+      this.diag.lastSendTs = now;
       this.logSend('ws', now);
-    } catch {
+    } catch (e) {
       this.ws = null;
+      this.diag.wsState = 'error';
+      this.diag.wsError = `send: ${e?.name || e}`;
     }
   }
 
