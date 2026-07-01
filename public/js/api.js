@@ -30,6 +30,7 @@ const API = {
   toggleNode(id, enabled) { return this.post('/api/nodes/toggle', { id, enabled }); },
   batchNodes(action) { return this.post('/api/nodes/batch', { action }); },
   reorderNodes(updates) { return this.post('/api/nodes/reorder', { updates }); },
+  batchDelete(ids) { return this.post('/api/nodes/batchDelete', { ids }); },
   deleteNode(id) { return this.post('/api/nodes/delete', { id }); },
   importNodes(nodes) { return this.post('/api/nodes/import', { nodes }); },
 

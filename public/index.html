@@ -98,6 +98,20 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
           <h2 class="text-sm font-bold uppercase tracking-wider text-zinc-400" x-text="group||'未分组'"></h2>
           <span class="text-xs text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded-full" x-text="nodesInGroup(group).length"></span>
           <button x-show="group!==''" @click.stop="showRename(group)" class="text-zinc-600 hover:text-violet-400 text-xs ml-2">✏️</button>
+          <div class="ml-auto flex items-center gap-2" @click.stop>
+            <template x-if="batchMode && nodesInGroup(group).some(n=>selectedNodes[n.id])">
+              <div class="flex items-center gap-1.5">
+                <select x-model="batchTargetGroup" class="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-violet-500">
+                  <option value="" disabled selected>移动到...</option>
+                  <option value="">无分组</option>
+                  <template x-for="g2 in groups" :key="g2"><option :value="g2" x-text="g2||'未分组'"></option></template>
+                </select>
+                <button @click="batchMoveGroup(group)" class="px-2 py-1 text-xs bg-violet-600/20 text-violet-400 hover:bg-violet-600/30 rounded border border-violet-600/20 transition">移动</button>
+                <button @click="batchDeleteNodes(group)" class="px-2 py-1 text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30 rounded border border-red-600/20 transition">删除</button>
+              </div>
+            </template>
+            <button @click="toggleBatchGroup(group)" class="px-2 py-1 text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded transition" x-text="batchMode && nodesInGroup(group).every(n=>selectedNodes[n.id]) ? '取消全选' : '批量操作'"></button>
+          </div>
         </div>
         <div x-show="!collapsedGroups[group]" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 3xl:grid-cols-6 gap-2" :data-group="group">
           <template x-for="n in nodesInGroup(group)" :key="n.id">
@@ -105,7 +119,8 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
               <!-- Card Header -->
               <div class="px-2.5 py-1.5 flex justify-between items-start border-b border-white/5 bg-white/[0.02]">
                 <div class="flex gap-2 min-w-0 flex-1">
-                  <div class="relative mt-0.5 flex-shrink-0">
+                  <input x-show="batchMode" type="checkbox" :checked="selectedNodes[n.id]" @change="$set(selectedNodes,n.id,$event.target.checked)" class="mt-1 accent-violet-500 flex-shrink-0">
+                  <div class="relative mt-0.5 flex-shrink-0" x-show="!batchMode">
                     <div class="w-2 h-2 rounded-full" :class="n.enabled ? 'bg-violet-400 shadow-[0_0_8px_rgba(124,58,237,0.8)]' : 'bg-zinc-600'"></div>
                     <div x-show="n.enabled" class="absolute inset-0 w-2 h-2 rounded-full bg-violet-400 animate-ping opacity-60"></div>
                   </div>
@@ -418,6 +433,7 @@ function app(){return{
   form:{},countrySearch:'',installScript:'',parseResult:'',
   toasts:[],searchQuery:'',searchOpen:false,activeGroup:'',newTemplateName:'',
   collapsedGroups:{},templates:[],
+  selectedNodes:{},batchMode:false,batchTargetGroup:'',
   confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
   showRenameModal:false,renameForm:{oldName:'',newName:''},
   showImportGroupModal:false,importGroupForm:{mode:'none',groupName:'',newGroup:''},pendingImportNodes:null,
@@ -436,12 +452,42 @@ function app(){return{
   get groups(){const g=new Set(this.nodes.map(n=>n.group_name||''));return Array.from(g).sort()},
   get filteredNodes(){let f=this.nodes;if(this.activeGroup) f=f.filter(n=>(n.group_name||'')===this.activeGroup);if(this.searchQuery){const s=this.searchQuery.toLowerCase();f=f.filter(n=>n.name.toLowerCase().includes(s)||(n.server_address||'').toLowerCase().includes(s)||(n.group_name||'').toLowerCase().includes(s))}return f},
   get displayedGroups(){const v=new Set(this.filteredNodes.map(n=>n.group_name||''));return this.groups.filter(g=>v.has(g))},
-  nodesInGroup(g){return this.filteredNodes.filter(n=>(n.group_name||'')===g)},
+  nodesInGroup(g){return this.filteredNodes.filter(n=>(n.group_name||'')===g).sort((a,b)=>(a.name||'').localeCompare(b.name||''))},
   getFlag(c){if(!c)return'🏳';const r=this.dd.countries.find(x=>x.code===c.toUpperCase());return r?r.flag:'🏳'},
   getKernels(os){return this.dd.kernelMap[os]||this.dd.kernelMap['Ubuntu 24.04 LTS']||['5.15.0-generic']},
   onOsChange(){const k=this.getKernels(this.form.os);if(k.length&&!k.includes(this.form.kernel_version)) this.form.kernel_version=k[0]},
 
   toggleCollapse(g){this.collapsedGroups[g]=!this.collapsedGroups[g];try{localStorage.setItem('vkomari_collapsed',JSON.stringify(this.collapsedGroups))}catch(e){}},
+
+  toggleBatchGroup(g){
+    const nodes=this.nodesInGroup(g);
+    const allSelected=nodes.every(n=>this.selectedNodes[n.id]);
+    if(allSelected){nodes.forEach(n=>{this.selectedNodes[n.id]=false})}
+    else{nodes.forEach(n=>{this.selectedNodes[n.id]=true})}
+    this.batchMode=true;
+    this.selectedNodes={...this.selectedNodes};
+    if(!Object.values(this.selectedNodes).some(v=>v))this.batchMode=false
+  },
+
+  getSelectedIds(group){
+    const nodes=this.nodesInGroup(group);
+    return nodes.filter(n=>this.selectedNodes[n.id]).map(n=>n.id)
+  },
+
+  async batchMoveGroup(group){
+    const ids=this.getSelectedIds(group);
+    if(!ids.length){this.notify('请先选择节点','error');return}
+    const target=this.batchTargetGroup;
+    try{await API.reorderNodes(ids.map(id=>({id,group_name:target})));await this.loadNodes();ids.forEach(id=>{this.selectedNodes[id]=false});this.batchMode=false;this.notify('已移动 '+ids.length+' 个节点','success')}catch(e){this.notify('移动失败: '+e.message,'error')}
+  },
+
+  async batchDeleteNodes(group){
+    const ids=this.getSelectedIds(group);
+    if(!ids.length){this.notify('请先选择节点','error');return}
+    const ok=await this.showConfirm('批量删除','确定删除选中的 '+ids.length+' 个节点？此操作不可撤销！','danger','删除');
+    if(!ok)return;
+    try{await API.batchDelete(ids);await this.loadNodes();ids.forEach(id=>{this.selectedNodes[id]=false});this.batchMode=false;this.notify('已删除 '+ids.length+' 个节点','success')}catch(e){this.notify('删除失败: '+e.message,'error')}
+  },
 
   init(){
     if(this.token){this.validateToken()}

@@ -54,6 +54,15 @@ router.post('/delete', async (c) => {
   return c.json({ status: 'ok' });
 });
 
+router.post('/batchDelete', async (c) => {
+  const { ids } = await c.req.json();
+  if (!Array.isArray(ids) || ids.length === 0) return c.json({ error: 'No ids' }, 400);
+  const db = getDB(c);
+  const stmts = ids.map(id => db.prepare('DELETE FROM nodes WHERE id = ?').bind(id));
+  await db.batch(stmts);
+  return c.json({ status: 'ok', count: stmts.length });
+});
+
 router.post('/import', async (c) => {
   const { nodes } = await c.req.json();
   if (!Array.isArray(nodes)) return c.json({ error: 'Invalid data' }, 400);
