@@ -56,9 +56,14 @@ app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOStrin
 
 app.get('/api/cfmonitor/diag', authMiddleware, async (c) => {
   const db = getDB(c);
-  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind('cf_diag').first();
+  await ensureSchema(db).catch(() => {});
   let reporters = [];
-  try { reporters = JSON.parse(row?.value || '[]'); } catch {}
+  try {
+    const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind('cf_diag').first();
+    reporters = JSON.parse(row?.value || '[]');
+  } catch (e) {
+    // settings table might not exist yet — return empty
+  }
   return c.json({ reporters, serverTime: Date.now() });
 });
 

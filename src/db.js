@@ -6,12 +6,20 @@ export function getDB(c) {
 }
 
  export async function ensureSchema(db) {
-   if (schemaReady) return;
-   try {
-     await db.prepare('SELECT 1 FROM users LIMIT 1').first();
-     schemaReady = true;
-     return;
-   } catch {
+  if (schemaReady) return;
+  try {
+    await db.prepare('SELECT 1 FROM users LIMIT 1').first();
+    // users table exists — but settings table might not (added later).
+    // Always ensure settings table exists with CREATE TABLE IF NOT EXISTS.
+    try {
+      await db.batch([
+        db.prepare('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)'),
+        db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (\'cf_diag\', \'[]\')')
+      ]);
+    } catch {}
+    schemaReady = true;
+    return;
+  } catch {
      await db.batch([
        db.prepare('CREATE TABLE IF NOT EXISTS groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, color TEXT, sort_order INTEGER)'),
        db.prepare('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT UNIQUE, password TEXT, salt TEXT)'),
