@@ -34,10 +34,18 @@ export class VirtualAgent {
   }
 
   _calcUsable() {
+    const ramTotalMB = this._mb('ram_total', 1024);
+    const diskTotalMB = this._mb('disk_total', 10240);
     return {
-      ram: Math.floor(this._mb('ram_total', 1024) * MB),
-      disk: Math.floor(this._mb('disk_total', 10240) * MB),
-      swap: Math.floor(this._mb('swap_total', 0, true) * MB)
+      ram: Math.floor(ramTotalMB * MB),
+      disk: Math.floor(diskTotalMB * MB),
+      swap: Math.floor(this._mb('swap_total', 0, true) * MB),
+      // System base overhead in MB: OS kernel + init + ssh + monitoring agent.
+      // This is a FIXED floor that never fluctuates with activity.
+      // RAM: ~80MB baseline + 5% of total, capped at 160MB.
+      ramBaseMB: Math.round(80 + Math.min(ramTotalMB * 0.05, 80)),
+      // Disk: ~2GB baseline + 3% of total, capped at 4GB.
+      diskBaseMB: Math.round(2048 + Math.min(diskTotalMB * 0.03, 2048))
     };
   }
 
@@ -110,11 +118,18 @@ export class VirtualAgent {
     const cpuOvershoot = Math.min(40, Math.max(1.2, cpuSpan * cpuBurstAmp));
     const cpu = this._clamp(cpuSoft + burst * cpuOvershoot - this._wave(t, 11, 2.1) * cpuSpan * (cpuRest + 0.18), 0, 100);
 
-    // Memory: slow-moving, only long waves + mild activity. No burst, no direct CPU coupling.
+    // Memory: system base (absolute MB) + variable workload percentage of total.
+    // The base covers OS + daemons and never drops; the variable part uses
+    // slowActive + long waves so short-term fluctuation is minimal.
     const [memMin, memMax] = this._range('mem_min', 'mem_max', 100);
-    const memSpan = Math.max(1, memMax - memMin);
-    const memBase = 0.28 + this.nodeSeed * 0.14 + this._wave(t, 1800, 2.2) * 0.30 + this._wave(t, 5400, 3.5) * 0.14 + slowActive * 0.10;
-    const mem = this._clamp(memMin + memSpan * memBase, 0, 100);
+    const memVarSpan = Math.max(1, memMax - memMin);
+    const memVarPct = this._clamp(
+      memMin + memVarSpan * (0.18 + this.nodeSeed * 0.14 + this._wave(t, 1800, 2.2) * 0.34 + this._wave(t, 5400, 3.5) * 0.14 + slowActive * 0.10),
+      0, 100
+    );
+    const ramTotalMB = this._mb('ram_total', 1024);
+    const memUsedMB = this.usable.ramBaseMB + (ramTotalMB - this.usable.ramBaseMB) * memVarPct / 100;
+    const mem = this._clamp(memUsedMB / ramTotalMB * 100, 0, 100);
 
     // Swap: very slow, only sustained memory pressure drives it. No burst at all.
     const [swapMin, swapMax] = this._range('swap_min', 'swap_max', 100);
@@ -122,11 +137,17 @@ export class VirtualAgent {
     const swapPressure = this._clamp((mem - 65) / 35, 0, 1);
     const swap = this._clamp(swapMin + swapSpan * (swapPressure * 0.55 + this._wave(t, 5400, 1.1) * 0.22 + slowActive * 0.10), 0, 100);
 
-    // Disk: barely moves short-term, slow hourly growth.
+    // Disk: system base (absolute MB) + slow growth. Barely moves short-term.
     const [diskMin, diskMax] = this._range('disk_min', 'disk_max', 100);
-    const diskSpan = Math.max(1, diskMax - diskMin);
+    const diskVarSpan = Math.max(1, diskMax - diskMin);
     const diskGrowth = ((Math.floor(t / 3600) + Math.floor(this.nodeSeed * 100)) % 720) / 720;
-    const disk = this._clamp(diskMin + diskSpan * (0.12 + this.nodeSeed * 0.58 + diskGrowth * 0.22 + this._wave(t, 7200, 0.7) * 0.06), 0, 100);
+    const diskVarPct = this._clamp(
+      diskMin + diskVarSpan * (0.12 + this.nodeSeed * 0.58 + diskGrowth * 0.22 + this._wave(t, 7200, 0.7) * 0.06),
+      0, 100
+    );
+    const diskTotalMB = this._mb('disk_total', 10240);
+    const diskUsedMB = this.usable.diskBaseMB + (diskTotalMB - this.usable.diskBaseMB) * diskVarPct / 100;
+    const disk = this._clamp(diskUsedMB / diskTotalMB * 100, 0, 100);
 
     // Network: tied to CPU activity + burst, but with slightly slower oscillation.
     const [netMin, netMax] = this._range('net_min', 'net_max');
