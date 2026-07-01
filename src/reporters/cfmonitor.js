@@ -139,11 +139,12 @@ export class CFMonitorReporter {
   async connectWebSocket() {
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
     this.diag.wsUrl = this.wsUrl.replace(/token=[^&]+/, 'token=***');
-    // CRITICAL: Do NOT use service binding for WebSocket connections.
-    // CF Monitor server uses hibernation API (state.acceptWebSocket).
-    // Service binding WebSockets cannot receive messages from hibernated sessions.
-    // Must use direct fetch so the platform routes DO → client messages correctly.
-    this.ws = await openReporterWebSocket(this.wsUrl, this.logName(), null);
+    // Use service binding for WS — it works for sending data to CF Monitor.
+    // Service binding WS cannot receive messages (hibernation API limitation),
+    // so we don't rely on policy messages. Instead, shouldSend() always uses
+    // the configured report_interval when WS is open.
+    const fetcher = this.fetcher();
+    this.ws = await openReporterWebSocket(this.wsUrl, this.logName(), fetcher);
     if (!this.ws) {
       this.diag.wsState = 'no_socket';
       this.diag.wsError = 'openReporterWebSocket returned null';
@@ -227,24 +228,20 @@ export class CFMonitorReporter {
   }
 
   shouldSend(now) {
-    // Force immediate send when policy switches to active (viewer opened panel)
-    if (this.forceNextSend) {
-      this.forceNextSend = false;
+    // When WS is open, always report at the configured interval (default 3s).
+    // We can't receive policy messages via service binding WS (hibernation API),
+    // so we ignore policy mode and just send at report_interval.
+    // This ensures data refreshes every 3s when the CF Monitor panel is open.
+    if (this.isOpen()) {
+      const interval = Math.max(1000, this.reportIntervalSec() * 1000);
+      if (now - this.lastSample < interval) return false;
       this.lastSample = now;
       this.lastSendAt = now;
       return true;
     }
-    if (this.policy.mode === 'active') {
-      const interval = Math.max(1000, this.policy.sampleInterval);
-      if (now - this.lastSample < interval) return false;
-      this.lastSample = now;
-    } else {
-      // Idle: use interval-based throttle instead of minute-parity check.
-      // The old `getUTCMinutes() % 2` check could block sends for up to 119s
-      // even after switching from active→idle, and caused unpredictable timing.
-      const interval = Math.max(60000, this.policy.reportInterval);
-      if (now - this.lastSendAt < interval) return false;
-    }
+    // HTTP fallback: use idle interval (120s) since no one may be watching
+    const interval = Math.max(60000, this.policy.reportInterval);
+    if (now - this.lastSendAt < interval) return false;
     this.lastSendAt = now;
     return true;
   }
