@@ -55,23 +55,11 @@ app.post('/api/templates/delete', authMiddleware, async (c) => {
 app.get('/api/health', (c) => c.json({ status: 'ok', time: new Date().toISOString() }));
 
 app.get('/api/cfmonitor/diag', authMiddleware, async (c) => {
-  const { cfDiag } = await import('./reporters/cfmonitor.js');
-  return c.json({
-    reporters: cfDiag.reporters.map(r => ({
-      name: r.name,
-      wsState: r.wsState,
-      policyMode: r.policyMode,
-      lastPolicyTs: r.lastPolicyTs,
-      lastPolicyAge: r.lastPolicyTs ? Date.now() - r.lastPolicyTs : -1,
-      lastSendTs: r.lastSendTs,
-      lastSendAge: r.lastSendTs ? Date.now() - r.lastSendTs : -1,
-      sendCount: r.sendCount,
-      wsError: r.wsError,
-      wsUrl: r.wsUrl,
-      usingServiceBinding: r.usingServiceBinding,
-    })),
-    serverTime: Date.now(),
-  });
+  const db = getDB(c);
+  const row = await db.prepare('SELECT value FROM settings WHERE key = ?').bind('cf_diag').first();
+  let reporters = [];
+  try { reporters = JSON.parse(row?.value || '[]'); } catch {}
+  return c.json({ reporters, serverTime: Date.now() });
 });
 
 app.onError((err, c) => {
@@ -88,11 +76,6 @@ async function runCron(env, ctx) {
   if (!results || results.length === 0) return;
 
   console.log(`[vKomari] Cron: ${results.length} enabled nodes`);
-
-  // Reset diagnostic store for this cron cycle
-  const { cfDiag } = await import('./reporters/cfmonitor.js');
-  cfDiag.reporters = [];
-  cfDiag.lastUpdate = Date.now();
 
   const reporters = [];
   for (const node of results) {
@@ -123,6 +106,21 @@ async function runCron(env, ctx) {
       }
     }));
     const elapsed = Date.now() - loopStart;
+    // Persist CF Monitor diagnostics to D1 every ~5s for the /api/cfmonitor/diag endpoint
+    const cfReporters = reporters.filter(r => r.type === 'cfmonitor' && r.inst.diag);
+    if (cfReporters.length > 0) {
+      const diagData = cfReporters.map(r => {
+        const d = r.inst.diag;
+        return {
+          name: d.name, wsState: d.wsState, policyMode: d.policyMode,
+          lastPolicyTs: d.lastPolicyTs, lastSendTs: d.lastSendTs,
+          sendCount: d.sendCount, wsError: d.wsError, wsUrl: d.wsUrl,
+          usingServiceBinding: d.usingServiceBinding,
+        };
+      });
+      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+        .bind('cf_diag', JSON.stringify(diagData)).run().catch(() => {});
+    }
     // Tick every 1s so Komari (1s interval) and CF Monitor (3s active) stay responsive
     const wait = Math.max(0, 1000 - elapsed);
     if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
