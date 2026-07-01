@@ -362,8 +362,8 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
                 :class="{'bg-green-500/10 text-green-400': r.wsState==='open', 'bg-red-500/10 text-red-400': r.wsState==='error'||r.wsState==='no_socket', 'bg-amber-500/10 text-amber-400': r.wsState==='timeout'||r.wsState==='closed', 'bg-zinc-700 text-zinc-400': r.wsState==='connecting'}"
                 x-text="r.wsState"></span>
               <span class="text-[10px] px-1.5 py-0.5 rounded font-mono"
-                :class="{'bg-violet-500/10 text-violet-400': r.policyMode==='active', 'bg-zinc-700 text-zinc-400': r.policyMode==='idle'}"
-                x-text="'policy: '+r.policyMode"></span>
+                :class="{'bg-green-500/10 text-green-400': r.wsState==='open' && r.sendCount > 0, 'bg-amber-500/10 text-amber-400': r.wsState!=='open', 'bg-zinc-700 text-zinc-400': r.wsState==='open' && r.sendCount === 0}"
+                x-text="r.wsState==='open' && r.sendCount > 0 ? 'reporting' : 'idle'"></span>
               <span class="text-[10px] px-1.5 py-0.5 rounded font-mono" :class="r.usingServiceBinding ? 'bg-emerald-500/10 text-emerald-400' : 'bg-zinc-700 text-zinc-400'" x-text="r.usingServiceBinding ? 'binding' : 'fetch'"></span>
             </div>
             <div class="grid grid-cols-2 gap-1 text-[11px] text-zinc-500 font-mono">
