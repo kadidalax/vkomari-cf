@@ -179,7 +179,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         </div>
         <div>
           <h2 class="text-xl font-bold text-white" x-text="form.id ? '编辑节点配置' : '新建虚拟节点'"></h2>
-          <p class="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5">Node Configuration</p>
+          <p class="text-[10px] text-zinc-500 uppercase tracking-widest mt-0.5" x-text="editingTemplateId ? '模板: '+editingTemplateName : 'Node Configuration'"></p>
         </div>
         <!-- Template Picker -->
         <div class="relative ml-4" x-data="{open:false}">
@@ -298,10 +298,31 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
     <div class="p-4 border-t border-white/5 bg-zinc-900/30 flex justify-between items-center">
       <button @click="deleteNode(form.id)" x-show="form.id" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm transition">删除节点</button>
       <div class="flex gap-2 ml-auto items-center">
-        <button @click="saveTemplateFromForm()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 px-4 py-2 rounded-lg text-sm transition border border-amber-600/20" x-text="editingTemplateId ? '更新模板' : '存为模板'"></button>
+        <button x-show="editingTemplateId" @click="saveTemplateCurrent()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 px-4 py-2 rounded-lg text-sm transition border border-amber-600/20">保存为当前</button>
+        <button @click="openSaveTplModal()" class="bg-zinc-700/50 hover:bg-zinc-600 text-zinc-300 px-4 py-2 rounded-lg text-sm transition border border-zinc-600/30">另存模板</button>
         <button @click="showModal=false" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-sm transition">取消</button>
         <button @click="saveNode()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-violet-900/20">保存</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Save Template As Modal -->
+<div x-show="showSaveTplModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity @keydown.escape.window="showSaveTplModal=false">
+  <div class="glass rounded-2xl p-6 w-full max-w-sm" @click.away="showSaveTplModal=false">
+    <div class="flex items-center gap-3 mb-4">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+        <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h6.586A2 2 0 0115 3.586L19.414 8A2 2 0 0120 9.414V19a2 2 0 01-2 2H7a2 2 0 01-2-2V5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3v6h6"/></svg>
+      </div>
+      <div>
+        <h3 class="text-base font-bold text-zinc-100">另存为模板</h3>
+        <p class="text-[11px] text-zinc-500">保存当前配置为新模板</p>
+      </div>
+    </div>
+    <input type="text" x-model="saveTplName" @keydown.enter="saveTemplateAs()" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2.5 text-sm focus:border-amber-500 focus:outline-none mb-4" placeholder="输入模板名称..." x-ref="saveTplInput">
+    <div class="flex gap-2 justify-end">
+      <button @click="showSaveTplModal=false" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-4 py-2 rounded-lg text-sm transition">取消</button>
+      <button @click="saveTemplateAs()" class="bg-amber-600 hover:bg-amber-500 text-white px-5 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-amber-900/20">保存</button>
     </div>
   </div>
 </div>
@@ -346,6 +367,7 @@ function app(){return{
   confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
   showRenameModal:false,renameForm:{oldName:'',newName:''},
   editingTemplateId:null,editingTemplateName:'',
+  showSaveTplModal:false,saveTplName:'',
   dd:DROPDOWN_DATA,
 
   notify(msg,type){const id=Date.now();this.toasts.push({id,message:msg,type});setTimeout(()=>{this.toasts=this.toasts.filter(t=>t.id!==id)},3000)},
@@ -445,11 +467,20 @@ function app(){return{
 
   editTemplate(t){this.editingTemplateId=t.id;this.editingTemplateName=t.name;this.openModal();this.applyTemplate(t);this.notify('已加载模板「'+t.name+'」配置，修改后点击保存模板','info')},
 
-  async saveTemplateFromForm(){
+  async saveTemplateCurrent(){
+    if(!this.editingTemplateId)return;
     const f=this.normalizedForm();
     const cfg={os:f.os,arch:f.arch,virtualization:f.virtualization,region:f.region,cpu_model:f.cpu_model,gpu_name:f.gpu_name,kernel_version:f.kernel_version,cpu_cores:f.cpu_cores,ram_total:f.ram_total,swap_total:f.swap_total,disk_total:f.disk_total,load_profile:f.load_profile,cpu_min:f.cpu_min,cpu_max:f.cpu_max,mem_min:f.mem_min,mem_max:f.mem_max,swap_min:f.swap_min,swap_max:f.swap_max,disk_min:f.disk_min,disk_max:f.disk_max,net_min:f.net_min,net_max:f.net_max,conn_min:f.conn_min,conn_max:f.conn_max,proc_min:f.proc_min,proc_max:f.proc_max,report_interval:f.report_interval,traffic_reset_day:f.traffic_reset_day,report_enabled:f.report_enabled?1:0};
-    const name=this.editingTemplateName||prompt('模板名称:');if(!name)return;
-    try{if(this.editingTemplateId){await API.updateTemplate(this.editingTemplateId,name,cfg)}else{await API.saveTemplate(name,cfg)}await this.loadTemplates();this.notify('模板已保存','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
+    try{await API.updateTemplate(this.editingTemplateId,this.editingTemplateName,cfg);await this.loadTemplates();this.notify('模板「'+this.editingTemplateName+'」已更新','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
+  },
+
+  openSaveTplModal(){this.saveTplName=this.editingTemplateName||'';this.showSaveTplModal=true;this.$nextTick(()=>{if(this.$refs.saveTplInput)this.$refs.saveTplInput.focus()})},
+
+  async saveTemplateAs(){
+    if(!this.saveTplName.trim()){this.notify('请输入模板名称','error');return}
+    const f=this.normalizedForm();
+    const cfg={os:f.os,arch:f.arch,virtualization:f.virtualization,region:f.region,cpu_model:f.cpu_model,gpu_name:f.gpu_name,kernel_version:f.kernel_version,cpu_cores:f.cpu_cores,ram_total:f.ram_total,swap_total:f.swap_total,disk_total:f.disk_total,load_profile:f.load_profile,cpu_min:f.cpu_min,cpu_max:f.cpu_max,mem_min:f.mem_min,mem_max:f.mem_max,swap_min:f.swap_min,swap_max:f.swap_max,disk_min:f.disk_min,disk_max:f.disk_max,net_min:f.net_min,net_max:f.net_max,conn_min:f.conn_min,conn_max:f.conn_max,proc_min:f.proc_min,proc_max:f.proc_max,report_interval:f.report_interval,traffic_reset_day:f.traffic_reset_day,report_enabled:f.report_enabled?1:0};
+    try{await API.saveTemplate(this.saveTplName.trim(),cfg);this.showSaveTplModal=false;await this.loadTemplates();this.notify('模板「'+this.saveTplName.trim()+'」已保存','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
   },
 
   parseScript(){
