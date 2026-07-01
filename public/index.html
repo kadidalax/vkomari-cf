@@ -298,7 +298,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
     <div class="p-4 border-t border-white/5 bg-zinc-900/30 flex justify-between items-center">
       <button @click="deleteNode(form.id)" x-show="form.id" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm transition">删除节点</button>
       <div class="flex gap-2 ml-auto items-center">
-        <button x-show="editingTemplateId" @click="saveTemplateCurrent()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 px-4 py-2 rounded-lg text-sm transition border border-amber-600/20">保存为当前</button>
+        <button x-show="editingTemplateId" @click="saveTemplateCurrent()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 px-4 py-2 rounded-lg text-sm transition border border-amber-600/20">保存模板</button>
         <button @click="openSaveTplModal()" class="bg-zinc-700/50 hover:bg-zinc-600 text-zinc-300 px-4 py-2 rounded-lg text-sm transition border border-zinc-600/30">另存模板</button>
         <button @click="showModal=false" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-sm transition">取消</button>
         <button @click="saveNode()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-violet-900/20">保存</button>
