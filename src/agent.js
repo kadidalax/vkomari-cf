@@ -131,11 +131,27 @@ export class VirtualAgent {
     const memUsedMB = this.usable.ramBaseMB + (ramTotalMB - this.usable.ramBaseMB) * memVarPct / 100;
     const mem = this._clamp(memUsedMB / ramTotalMB * 100, 0, 100);
 
-    // Swap: very slow, only sustained memory pressure drives it. No burst at all.
-    const [swapMin, swapMax] = this._range('swap_min', 'swap_max', 100);
-    const swapSpan = Math.max(1, swapMax - swapMin);
-    const swapPressure = this._clamp((mem - 65) / 35, 0, 1);
-    const swap = this._clamp(swapMin + swapSpan * (swapPressure * 0.55 + this._wave(t, 5400, 1.1) * 0.22 + slowActive * 0.10), 0, 100);
+    // Swap: only active when available RAM is genuinely low. Extremely slow.
+    // No swap configured → always 0. Kernel swaps pages out when free RAM
+    // drops below a threshold; once swapped, pages stay even after RAM frees.
+    const swapTotalMB = this._mb('swap_total', 0, true);
+    let swap;
+    if (swapTotalMB <= 0) {
+      swap = 0;
+    } else {
+      const [swapMin, swapMax] = this._range('swap_min', 'swap_max', 100);
+      const swapSpan = Math.max(1, swapMax - swapMin);
+      // Pressure based on available RAM (MB), not percentage.
+      // Threshold: 25% of total RAM. Below that, swap pressure ramps up.
+      const freeRamMB = ramTotalMB - memUsedMB;
+      const swapThreshold = ramTotalMB * 0.25;
+      const swapPressure = this._clamp(1 - freeRamMB / swapThreshold, 0, 1);
+      // Very slow oscillation (10800s = 3h) + tiny activity influence.
+      swap = this._clamp(
+        swapMin + swapSpan * (swapPressure * 0.65 + this._wave(t, 10800, 1.1) * 0.12 + slowActive * 0.05),
+        0, 100
+      );
+    }
 
     // Disk: system base (absolute MB) + slow growth. Barely moves short-term.
     const [diskMin, diskMax] = this._range('disk_min', 'disk_max', 100);
