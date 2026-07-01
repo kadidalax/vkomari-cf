@@ -298,7 +298,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
     <div class="p-4 border-t border-white/5 bg-zinc-900/30 flex justify-between items-center">
       <button @click="deleteNode(form.id)" x-show="form.id" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 px-4 py-2 rounded-lg text-sm transition">删除节点</button>
       <div class="flex gap-2 ml-auto items-center">
-        <button x-show="editingTemplateId" @click="saveTemplateCurrent()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 px-4 py-2 rounded-lg text-sm transition border border-amber-600/20">保存模板</button>
+        <button @click="saveTemplateCurrent()" class="bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 px-4 py-2 rounded-lg text-sm transition border border-amber-600/20">保存模板</button>
         <button @click="openSaveTplModal()" class="bg-zinc-700/50 hover:bg-zinc-600 text-zinc-300 px-4 py-2 rounded-lg text-sm transition border border-zinc-600/30">另存模板</button>
         <button @click="showModal=false" class="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-4 py-2 rounded-lg text-sm transition">取消</button>
         <button @click="saveNode()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition shadow-lg shadow-violet-900/20">保存</button>
@@ -468,7 +468,7 @@ function app(){return{
   editTemplate(t){this.editingTemplateId=t.id;this.editingTemplateName=t.name;this.openModal();this.applyTemplate(t);this.notify('已加载模板「'+t.name+'」配置，修改后点击保存模板','info')},
 
   async saveTemplateCurrent(){
-    if(!this.editingTemplateId)return;
+    if(!this.editingTemplateId){this.openSaveTplModal();return}
     const f=this.normalizedForm();
     const cfg={os:f.os,arch:f.arch,virtualization:f.virtualization,region:f.region,cpu_model:f.cpu_model,gpu_name:f.gpu_name,kernel_version:f.kernel_version,cpu_cores:f.cpu_cores,ram_total:f.ram_total,swap_total:f.swap_total,disk_total:f.disk_total,load_profile:f.load_profile,cpu_min:f.cpu_min,cpu_max:f.cpu_max,mem_min:f.mem_min,mem_max:f.mem_max,swap_min:f.swap_min,swap_max:f.swap_max,disk_min:f.disk_min,disk_max:f.disk_max,net_min:f.net_min,net_max:f.net_max,conn_min:f.conn_min,conn_max:f.conn_max,proc_min:f.proc_min,proc_max:f.proc_max,report_interval:f.report_interval,traffic_reset_day:f.traffic_reset_day,report_enabled:f.report_enabled?1:0};
     try{await API.updateTemplate(this.editingTemplateId,this.editingTemplateName,cfg);await this.loadTemplates();this.notify('模板「'+this.editingTemplateName+'」已更新','success')}catch(e){this.notify('保存失败: '+e.message,'error')}
