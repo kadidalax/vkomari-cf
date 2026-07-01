@@ -195,6 +195,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
               <template x-for="t in templates" :key="t.id">
                 <div class="flex items-center group p-2.5 hover:bg-white/5 rounded-xl cursor-pointer transition">
                   <div @click="applyTemplate(t);open=false" class="flex-1 min-w-0"><div class="text-sm font-medium text-zinc-200 truncate" x-text="t.name"></div><div class="text-[10px] text-zinc-500" x-text="(t.config.cpu_cores||2)+'C '+(t.config.ram_total||1024)+'MB'"></div></div>
+                  <button @click.stop="editTemplate(t)" class="text-zinc-600 hover:text-violet-400 p-1.5 opacity-0 group-hover:opacity-100 transition" title="编辑模板"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
                   <button @click.stop="deleteTemplate(t.id)" class="text-zinc-600 hover:text-red-400 p-1.5 opacity-0 group-hover:opacity-100 transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
                 </div>
               </template>
@@ -304,6 +305,22 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
   </div>
 </div>
 
+<!-- Template Edit Modal -->
+<div x-show="showTplEditModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity>
+  <div class="glass rounded-2xl p-6 w-full max-w-md">
+    <h3 class="text-lg font-bold mb-4">编辑模板</h3>
+    <label class="text-[10px] text-zinc-500 uppercase">模板名称</label>
+    <input type="text" x-model="tplEditForm.name" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-sm focus:border-violet-500 focus:outline-none mb-4 mt-1">
+    <label class="text-[10px] text-zinc-500 uppercase">配置 (JSON)</label>
+    <textarea x-model="tplEditForm.configText" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-3 text-xs font-mono focus:border-violet-500 focus:outline-none mb-4 mt-1 h-48 cs"></textarea>
+    <div x-show="tplEditError" class="text-red-400 text-xs mb-3" x-text="tplEditError"></div>
+    <div class="flex gap-2 justify-end">
+      <button @click="showTplEditModal=false" class="bg-zinc-700 hover:bg-zinc-600 px-4 py-2 rounded-lg text-sm transition">取消</button>
+      <button @click="saveTplEdit()" class="bg-violet-600 hover:bg-violet-500 text-white px-6 py-2 rounded-lg text-sm font-bold transition">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- Password Modal -->
 <div x-show="showPwdModal" class="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50" x-transition.opacity>
   <div class="glass rounded-2xl p-6 w-full max-w-sm">
@@ -343,6 +360,7 @@ function app(){return{
   collapsedGroups:{},templates:[],
   confirmDialog:{show:false,title:'',message:'',type:'info',isConfirm:false,confirmText:'确定',onConfirm:()=>{},onCancel:()=>{}},
   showRenameModal:false,renameForm:{oldName:'',newName:''},
+  showTplEditModal:false,tplEditForm:{id:0,name:'',configText:''},tplEditError:'',
   dd:DROPDOWN_DATA,
 
   notify(msg,type){const id=Date.now();this.toasts.push({id,message:msg,type});setTimeout(()=>{this.toasts=this.toasts.filter(t=>t.id!==id)},3000)},
@@ -439,6 +457,14 @@ function app(){return{
   },
 
   async deleteTemplate(id){const ok=await this.showConfirm('删除模板','确定删除此模板？','danger','删除');if(!ok)return;try{await API.deleteTemplate(id);await this.loadTemplates()}catch(e){this.notify('删除失败','error')}},
+
+  editTemplate(t){this.tplEditForm={id:t.id,name:t.name,configText:JSON.stringify(t.config,null,2)};this.tplEditError='';this.showTplEditModal=true},
+
+  async saveTplEdit(){
+    if(!this.tplEditForm.name.trim()){this.tplEditError='模板名称不能为空';return}
+    let cfg;try{cfg=JSON.parse(this.tplEditForm.configText)}catch(e){this.tplEditError='JSON格式错误: '+e.message;return}
+    try{await API.updateTemplate(this.tplEditForm.id,this.tplEditForm.name.trim(),cfg);this.showTplEditModal=false;await this.loadTemplates();this.notify('模板已更新','success')}catch(e){this.tplEditError=e.message||'保存失败'}
+  },
 
   parseScript(){
     const s=this.installScript.trim();if(!s){this.parseResult='请粘贴安装脚本';return}

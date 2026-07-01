@@ -39,6 +39,13 @@ app.post('/api/templates', authMiddleware, async (c) => {
   return c.json({ status: 'ok', id: res.meta.last_row_id });
 });
 
+app.post('/api/templates/update', authMiddleware, async (c) => {
+  const { id, name, config } = await c.req.json();
+  if (!id) return c.json({ error: 'Missing template id' }, 400);
+  await getDB(c).prepare('UPDATE templates SET name = ?, config = ? WHERE id = ?').bind(name, JSON.stringify(config), id).run();
+  return c.json({ status: 'ok' });
+});
+
 app.post('/api/templates/delete', authMiddleware, async (c) => {
   const { id } = await c.req.json();
   await getDB(c).prepare('DELETE FROM templates WHERE id = ?').bind(id).run();

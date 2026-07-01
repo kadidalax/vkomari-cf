@@ -39,5 +39,6 @@ const API = {
   // Templates
   getTemplates() { return this.get('/api/templates'); },
   saveTemplate(name, config) { return this.post('/api/templates', { name, config }); },
+  updateTemplate(id, name, config) { return this.post('/api/templates/update', { id, name, config }); },
   deleteTemplate(id) { return this.post('/api/templates/delete', { id }); },
 };
