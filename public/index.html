@@ -62,7 +62,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
         <div class="w-px h-6 bg-zinc-700 mx-1"></div>
         <button @click="exportNodes" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">导出</button>
         <button @click="$refs.importFile.click()" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">导入</button>
-        <input type="file" x-ref="importFile" @change="importNodesFromFile" class="hidden" accept=".json">
+        <input type="file" x-ref="importFile" @change="importNodesFromFile" class="hidden" accept=".json" multiple>
         <div class="w-px h-6 bg-zinc-700 mx-1"></div>
         <button @click="showPwdModal=true" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">改密</button>
         <button @click="logout" class="px-3 py-1.5 text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded transition">退出</button>
@@ -557,12 +557,15 @@ function app(){return{
   },
 
   async importNodesFromFile(e){
-    const file=e.target.files[0];if(!file)return;
-    try{const text=await file.text();const nodes=JSON.parse(text);if(!Array.isArray(nodes))throw new Error('格式错误');
-    this.pendingImportNodes=nodes;
-    this.importGroupForm={mode:'none',groupName:'',newGroup:''};
-    this.showImportGroupModal=true;
-    e.target.value=''}catch(e){this.notify('导入失败: '+e.message,'error');e.target.value=''}
+    const files=Array.from(e.target.files);if(!files.length)return;
+    try{
+      const allNodes=[];
+      for(const file of files){const text=await file.text();const nodes=JSON.parse(text);if(Array.isArray(nodes)){allNodes.push(...nodes)}else if(nodes&&typeof nodes==='object'){allNodes.push(nodes)}else{throw new Error(file.name+': 格式错误')}}
+      if(!allNodes.length)throw new Error('未找到有效节点数据');
+      this.pendingImportNodes=allNodes;
+      this.importGroupForm={mode:'none',groupName:'',newGroup:''};
+      this.showImportGroupModal=true;
+      e.target.value=''}catch(e){this.notify('导入失败: '+e.message,'error');e.target.value=''}
   },
 
   cancelImport(){this.showImportGroupModal=false;this.pendingImportNodes=null},
