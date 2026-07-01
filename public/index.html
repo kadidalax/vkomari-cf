@@ -465,7 +465,7 @@ function app(){return{
 
   async deleteTemplate(id){const ok=await this.showConfirm('删除模板','确定删除此模板？','danger','删除');if(!ok)return;try{await API.deleteTemplate(id);await this.loadTemplates()}catch(e){this.notify('删除失败','error')}},
 
-  editTemplate(t){this.editingTemplateId=t.id;this.editingTemplateName=t.name;this.openModal();this.applyTemplate(t);this.notify('已加载模板「'+t.name+'」配置，修改后点击保存模板','info')},
+  editTemplate(t){this.openModal();this.editingTemplateId=t.id;this.editingTemplateName=t.name;this.applyTemplate(t);this.notify('已加载模板「'+t.name+'」配置，修改后点击保存模板','info')},
 
   async saveTemplateCurrent(){
     if(!this.editingTemplateId){this.openSaveTplModal();return}
