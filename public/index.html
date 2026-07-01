@@ -368,6 +368,7 @@ input:checked+.toggle-bg{background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 10
             </div>
             <div class="grid grid-cols-2 gap-1 text-[11px] text-zinc-500 font-mono">
               <div>发送次数: <span class="text-zinc-300" x-text="r.sendCount"></span></div>
+              <div>接收次数: <span class="text-zinc-300" :class="{'text-red-400': r.recvCount === 0}" x-text="r.recvCount"></span></div>
               <div>上次发送: <span class="text-zinc-300" x-text="r.lastSendAge >= 0 ? Math.round(r.lastSendAge/1000)+'s前' : '从未'"></span></div>
               <div>上次policy: <span class="text-zinc-300" x-text="r.lastPolicyAge >= 0 ? Math.round(r.lastPolicyAge/1000)+'s前' : '从未'"></span></div>
               <div x-show="r.wsError" class="col-span-2 text-red-400">错误: <span x-text="r.wsError"></span></div>

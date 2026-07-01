@@ -114,12 +114,15 @@ async function runCron(env, ctx) {
     // Persist CF Monitor diagnostics to D1 every ~5s for the /api/cfmonitor/diag endpoint
     const cfReporters = reporters.filter(r => r.type === 'cfmonitor' && r.inst.diag);
     if (cfReporters.length > 0) {
+      const nowTs = Date.now();
       const diagData = cfReporters.map(r => {
         const d = r.inst.diag;
         return {
           name: d.name, wsState: d.wsState, policyMode: d.policyMode,
-          lastPolicyTs: d.lastPolicyTs, lastSendTs: d.lastSendTs,
-          sendCount: d.sendCount, wsError: d.wsError, wsUrl: d.wsUrl,
+          lastSendAge: d.lastSendTs ? nowTs - d.lastSendTs : -1,
+          lastPolicyAge: d.lastPolicyTs ? nowTs - d.lastPolicyTs : -1,
+          sendCount: d.sendCount, recvCount: d.recvCount,
+          wsError: d.wsError, wsUrl: d.wsUrl,
           usingServiceBinding: d.usingServiceBinding,
         };
       });

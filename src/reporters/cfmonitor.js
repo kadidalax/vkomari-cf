@@ -31,6 +31,7 @@ export class CFMonitorReporter {
       lastPolicyTs: 0,
       lastPolicyMode: '',
       sendCount: 0,
+      recvCount: 0,
       wsError: '',
       wsUrl: '',
       usingServiceBinding: false,
@@ -138,8 +139,11 @@ export class CFMonitorReporter {
   async connectWebSocket() {
     try { if (this.ws && this.ws.readyState !== 3) this.ws.close(); } catch {}
     this.diag.wsUrl = this.wsUrl.replace(/token=[^&]+/, 'token=***');
-    const fetcher = this.fetcher();
-    this.ws = await openReporterWebSocket(this.wsUrl, this.logName(), fetcher);
+    // CRITICAL: Do NOT use service binding for WebSocket connections.
+    // CF Monitor server uses hibernation API (state.acceptWebSocket).
+    // Service binding WebSockets cannot receive messages from hibernated sessions.
+    // Must use direct fetch so the platform routes DO → client messages correctly.
+    this.ws = await openReporterWebSocket(this.wsUrl, this.logName(), null);
     if (!this.ws) {
       this.diag.wsState = 'no_socket';
       this.diag.wsError = 'openReporterWebSocket returned null';
@@ -149,12 +153,10 @@ export class CFMonitorReporter {
     this.diag.wsState = 'connecting';
     this.diag.wsError = '';
     this.ws.addEventListener('message', (event) => {
+      this.diag.recvCount++;
       try {
         const msg = JSON.parse(event.data);
         this.applyPolicy(msg);
-        if (msg.type === 'ack') {
-          // ack from server, no action needed
-        }
       } catch {}
     });
     this.ws.addEventListener('close', () => { this.ws = null; this.diag.wsState = 'closed'; });
