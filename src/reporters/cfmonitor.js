@@ -223,16 +223,15 @@ export class CFMonitorReporter {
   buildReport(now, intervalSec = this.reportIntervalSec()) {
     const stats = this.agent.generateStats(this.tickCount++);
     const interval = Math.max(3, Number(intervalSec) || this.reportIntervalSec());
-    const cpu = parseFloat(stats.cpu.toFixed(1));
     return {
-      cpu,
+      cpu: parseFloat(stats.cpu.toFixed(1)),
       gpu: 0,
       ram: Math.round(this.agent.usable.ram * stats.mem / 100),
       ram_total: this.agent.usable.ram,
       swap: Math.round(this.agent.usable.swap * stats.swap / 100),
       swap_total: this.agent.usable.swap,
-      load: parseFloat((stats.cpu / 100 * (parseInt(this.config.cpu_cores) || 2)).toFixed(2)),
-      temp: parseFloat((34 + cpu * 0.42 + this.agent.nodeSeed * 5).toFixed(1)),
+      load: stats.load1,
+      temp: stats.temp,
       disk: Math.round(this.agent.usable.disk * stats.disk / 100),
       disk_total: this.agent.usable.disk,
       net_in: stats.down,

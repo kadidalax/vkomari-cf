@@ -110,9 +110,9 @@ export class KomariReporter {
       ram: { total: this.agent.usable.ram, used: Math.round(this.agent.usable.ram * stats.mem / 100) },
       swap: { total: this.agent.usable.swap, used: Math.round(this.agent.usable.swap * stats.swap / 100) },
       load: {
-        load1: parseFloat((stats.cpu / 100 * (parseInt(this.config.cpu_cores) || 2)).toFixed(2)),
-        load5: parseFloat((stats.cpu / 100 * (parseInt(this.config.cpu_cores) || 2) * 0.85).toFixed(2)),
-        load15: parseFloat((stats.cpu / 100 * (parseInt(this.config.cpu_cores) || 2) * 0.7).toFixed(2))
+        load1: stats.load1,
+        load5: stats.load5,
+        load15: stats.load15
       },
       disk: { total: this.agent.usable.disk, used: Math.round(this.agent.usable.disk * stats.disk / 100) },
       network: { up: stats.up, down: stats.down, totalUp: stats.totalUp, totalDown: stats.totalDown },

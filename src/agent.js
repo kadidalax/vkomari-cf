@@ -91,6 +91,8 @@ export class VirtualAgent {
       0,
       1
     );
+    // Slow activity for metrics that shouldn't fluctuate rapidly (mem/swap/conn/proc/temp).
+    const slowActive = this._clamp(0.15 + dayPhase * 0.18 + this._wave(t, 600) * 0.25, 0, 1);
     const cpuBurstP1 = this._num('cpu_burst_period1');
     const cpuBurstP2 = this._num('cpu_burst_period2');
     const cpuBurstP3 = this._num('cpu_burst_period3');
@@ -108,42 +110,58 @@ export class VirtualAgent {
     const cpuOvershoot = Math.min(40, Math.max(1.2, cpuSpan * cpuBurstAmp));
     const cpu = this._clamp(cpuSoft + burst * cpuOvershoot - this._wave(t, 11, 2.1) * cpuSpan * (cpuRest + 0.18), 0, 100);
 
+    // Memory: slow-moving, only long waves + mild activity. No burst, no direct CPU coupling.
     const [memMin, memMax] = this._range('mem_min', 'mem_max', 100);
     const memSpan = Math.max(1, memMax - memMin);
-    const memBase = 0.30 + this.nodeSeed * 0.12 + this._wave(t, 1800, 2.2) * 0.34 + active * 0.16 + (cpu / 100) * 0.08;
-    const mem = this._clamp(memMin + memSpan * memBase + burst * Math.min(3, memSpan * 0.08), 0, 100);
+    const memBase = 0.28 + this.nodeSeed * 0.14 + this._wave(t, 1800, 2.2) * 0.30 + this._wave(t, 5400, 3.5) * 0.14 + slowActive * 0.10;
+    const mem = this._clamp(memMin + memSpan * memBase, 0, 100);
 
+    // Swap: very slow, only sustained memory pressure drives it. No burst at all.
     const [swapMin, swapMax] = this._range('swap_min', 'swap_max', 100);
     const swapSpan = Math.max(1, swapMax - swapMin);
-    const swapPressure = this._clamp((mem - 70) / 30, 0, 1);
-    const swap = this._clamp(swapMin + swapSpan * (swapPressure * 0.72 + this._wave(t, 2400, 1.1) * 0.20 + burst * 0.08), 0, 100);
+    const swapPressure = this._clamp((mem - 65) / 35, 0, 1);
+    const swap = this._clamp(swapMin + swapSpan * (swapPressure * 0.55 + this._wave(t, 5400, 1.1) * 0.22 + slowActive * 0.10), 0, 100);
 
+    // Disk: barely moves short-term, slow hourly growth.
     const [diskMin, diskMax] = this._range('disk_min', 'disk_max', 100);
     const diskSpan = Math.max(1, diskMax - diskMin);
     const diskGrowth = ((Math.floor(t / 3600) + Math.floor(this.nodeSeed * 100)) % 720) / 720;
     const disk = this._clamp(diskMin + diskSpan * (0.12 + this.nodeSeed * 0.58 + diskGrowth * 0.22 + this._wave(t, 7200, 0.7) * 0.06), 0, 100);
 
+    // Network: tied to CPU activity + burst, but with slightly slower oscillation.
     const [netMin, netMax] = this._range('net_min', 'net_max');
     const netSpan = Math.max(0, netMax - netMin);
     const netActivity = this._clamp(active * 0.25 + (cpu / 100) * 0.62 + burst * 0.22, 0, 1);
     const netBase = netMin + netSpan * netActivity;
-    const up = Math.max(0, Math.floor(netBase * (0.20 + this.nodeSeed * 0.22) * (0.72 + this._wave(t, 3.7, 1.3) * 0.70)));
-    const down = Math.max(0, Math.floor(netBase * (0.55 + this.nodeSeed * 0.28) * (0.72 + this._wave(t, 4.1, 2.4) * 0.70)));
+    const up = Math.max(0, Math.floor(netBase * (0.20 + this.nodeSeed * 0.22) * (0.72 + this._wave(t, 5.5, 1.3) * 0.70)));
+    const down = Math.max(0, Math.floor(netBase * (0.55 + this.nodeSeed * 0.28) * (0.72 + this._wave(t, 6.2, 2.4) * 0.70)));
 
     const uptime = this._uptime(nowSec);
     const avgSpeed = (netMin + netMax) / 2;
     const totalUp = Math.floor(uptime * avgSpeed * (0.28 + this.nodeSeed * 0.12));
     const totalDown = Math.floor(uptime * avgSpeed * (0.55 + this.nodeSeed * 0.18));
 
+    // Connections: driven by slow activity + medium wave, tiny fixed burst.
     const [connMin, connMax] = this._range('conn_min', 'conn_max');
     const connSpan = Math.max(1, connMax - connMin);
-    const conn = Math.round(this._clamp(connMin + connSpan * (active * 0.60 + cpu / 100 * 0.25 + burst * 0.16), 0, Math.max(connMax * 1.15, connMin)));
+    const conn = Math.round(this._clamp(connMin + connSpan * (slowActive * 0.80 + this._wave(t, 120, 1.5) * 0.10) + burst * 1.5, 0, Math.max(connMax * 1.15, connMin)));
     const connUdp = Math.round(conn * (0.04 + this.nodeSeed * 0.12));
 
+    // Process count: nearly constant, only slow drift.
     const [procMin, procMax] = this._range('proc_min', 'proc_max');
     const procSpan = Math.max(1, procMax - procMin);
-    const proc = Math.round(this._clamp(procMin + procSpan * (0.18 + active * 0.42 + cpu / 100 * 0.24 + this.nodeSeed * 0.12), 1, Math.max(procMax * 1.10, procMin)));
+    const proc = Math.round(this._clamp(procMin + procSpan * (0.32 + this.nodeSeed * 0.14 + slowActive * 0.14 + this._wave(t, 7200, 2.0) * 0.08), 1, Math.max(procMax * 1.10, procMin)));
 
-    return { cpu, mem, swap, disk, up, down, totalUp, totalDown, conn, connUdp, proc, uptime };
+    // Temperature: thermal lag — mostly follows a 2-minute smoothed CPU, not instantaneous.
+    const cpuThermal = this._clamp(cpuRest * 100 + slowActive * 30 + this._wave(t, 120, 0.8) * cpuMax * 0.50, 0, 100);
+    const temp = parseFloat((34 + cpuThermal * 0.42 + this.nodeSeed * 5).toFixed(1));
+
+    // Load averages: load1 = instantaneous; load5/load15 use longer waves to simulate EMA lag.
+    const cores = parseInt(this.config.cpu_cores) || 2;
+    const load1 = parseFloat((cpu / 100 * cores).toFixed(2));
+    const load5 = parseFloat((this._clamp(cpu * 0.30 + this._wave(t, 300, 0.5) * cpuMax * 0.50 + slowActive * cpuMax * 0.20, 0, 100) / 100 * cores).toFixed(2));
+    const load15 = parseFloat((this._clamp(cpu * 0.10 + this._wave(t, 900, 1.2) * cpuMax * 0.40 + slowActive * cpuMax * 0.50, 0, 100) / 100 * cores).toFixed(2));
+
+    return { cpu, mem, swap, disk, up, down, totalUp, totalDown, conn, connUdp, proc, uptime, temp, load1, load5, load15 };
   }
 }
